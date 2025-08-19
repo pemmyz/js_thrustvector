@@ -98,7 +98,7 @@ body {
 #pause-screen h2 { font-size: 2em; color: #fff; }
 #pause-screen p { font-size: 0.8em; }
 
-/* NEW: Help Screen Specific Styles */
+/* Help Screen Specific Styles */
 #help-screen {
     z-index: 60;
     text-align: left;
@@ -117,7 +117,7 @@ button {
 button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color: var(--safe-color); }
 .hidden { display: none !important; }
 
-/* NEW: Help Button in Corner */
+/* Help Button in Corner */
 #help-button-container {
     position: absolute;
     bottom: 10px;
@@ -170,3 +170,14 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     color: #eee;
 }
 #bomb-stability { color: var(--safe-color); }
+
+/* NEW: Dev Mode HUD Style */
+#dev-mode-hud {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--p2-color);
+    text-shadow: 0 0 8px var(--p2-color);
+    font-size: 0.8em;
+}

@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
             camera: { x: 0, y: 0, zoom: 0.4, shake: { duration: 0, magnitude: 0 } },
             status: 'menu',
             isTwoPlayer: false,
+            isDevMode: false, // NEW: Dev mode state
         };
 
         function init() {
@@ -27,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function resetGame() {
             state = JSON.parse(JSON.stringify(initialGameState));
+            UI.hide('dev-mode-hud'); // Ensure HUD is hidden on reset
         }
 
         function startGame(levelIndex) {
@@ -71,8 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
         function createShip(id, x, y, color, glowColor, controls) {
             return {
                 id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2,
-                radius: 20, health: 100, fuel: 100, mass: 1, // Ship mass for physics
-                isThrusting: false, wantsToClamp: false, isLanded: false, // MODIFIED: isClamping -> wantsToClamp
+                radius: 20, health: 100, fuel: 100, mass: 1,
+                isThrusting: false, wantsToClamp: false, isLanded: false,
                 color, glowColor, controls
             };
         }
@@ -80,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function createBomb(x, y) {
             return {
                 x, y, vx: 0, vy: 0,
-                radius: 30, mass: 5, // Bomb is 5x heavier than a ship
+                radius: 30, mass: 5,
                 stability: 100,
                 harmony: 0,
                 attachedShips: [],
@@ -137,8 +139,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } 
             else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); }
         }
+
+        // NEW: Function to toggle developer mode
+        function toggleDevMode() {
+            state.isDevMode = !state.isDevMode;
+            if (state.isDevMode) {
+                UI.show('dev-mode-hud');
+                console.log("Dev Mode: ON");
+            } else {
+                UI.hide('dev-mode-hud');
+                console.log("Dev Mode: OFF");
+            }
+        }
         
-        return { init, togglePause, endGame, startGame, getGameState: () => state };
+        return { init, togglePause, toggleDevMode, endGame, startGame, getGameState: () => state };
     })();
 
     // --- RENDERER MODULE ---
@@ -189,36 +203,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (action.left) ship.angle -= C.ROTATION_SPEED * dt;
                 if (action.right) ship.angle += C.ROTATION_SPEED * dt;
                 ship.isThrusting = action.up && ship.fuel > 0;
-                if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; ship.fuel -= C.FUEL_CONSUMPTION * dt; if(state.particles.length < 300) spawnThrustParticles(state, ship); }
+                if (ship.isThrusting) {
+                    ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt;
+                    ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt;
+                    // MODIFIED: Check for dev mode before draining fuel
+                    if (!state.isDevMode) {
+                        ship.fuel -= C.FUEL_CONSUMPTION * dt;
+                    }
+                    if(state.particles.length < 300) spawnThrustParticles(state, ship);
+                }
                 
                 ship.vy += C.GRAVITY * dt;
 
-                // Apply force from bomb's rope if attached
                 if (state.bomb.attachedShips.includes(ship)) {
                     const bomb = state.bomb;
                     const dx = bomb.x - ship.x;
                     const dy = bomb.y - ship.y;
                     const dist = Math.hypot(dx, dy) || 1;
-                    
-                    if (dist > C.ROPE_LENGTH) { // Rope only pulls, does not push
+                    if (dist > C.ROPE_LENGTH) {
                         const stretch = dist - C.ROPE_LENGTH;
                         const nx = dx / dist;
                         const ny = dy / dist;
-
-                        const springForce = C.ROPE_STIFFNESS * stretch;
-                        
                         const vRelX = bomb.vx - ship.vx;
                         const vRelY = bomb.vy - ship.vy;
                         const vAlongNormal = vRelX * nx + vRelY * ny;
                         const dampingForce = C.ROPE_DAMPING * vAlongNormal;
-
-                        const totalForce = springForce + dampingForce;
-                        const forceX = nx * totalForce;
-                        const forceY = ny * totalForce;
-
-                        // Apply force to ship's acceleration (a = F/m)
-                        ship.vx += (forceX / ship.mass) * dt;
-                        ship.vy += (forceY / ship.mass) * dt;
+                        const totalForce = (C.ROPE_STIFFNESS * stretch) + dampingForce;
+                        ship.vx += (nx * totalForce / ship.mass) * dt;
+                        ship.vy += (ny * totalForce / ship.mass) * dt;
                     }
                 }
 
@@ -232,116 +244,54 @@ document.addEventListener('DOMContentLoaded', () => {
         function updateBomb(state, dt) {
             const bomb = state.bomb;
             if (bomb.onPedestal) return;
-        
-            let forceX = 0;
-            let forceY = 0;
-        
-            // Apply forces from attached ship ropes
+            let forceX = 0, forceY = 0;
             if (bomb.attachedShips.length > 0) {
                 bomb.attachedShips.forEach(ship => {
-                    const dx = ship.x - bomb.x;
-                    const dy = ship.y - bomb.y;
+                    const dx = ship.x - bomb.x, dy = ship.y - bomb.y;
                     const dist = Math.hypot(dx, dy) || 1;
-        
-                    if (dist > C.ROPE_LENGTH) { // Rope only pulls
+                    if (dist > C.ROPE_LENGTH) {
                         const stretch = dist - C.ROPE_LENGTH;
-                        const nx = dx / dist;
-                        const ny = dy / dist;
-        
-                        const springForce = C.ROPE_STIFFNESS * stretch;
-        
-                        const vRelX = ship.vx - bomb.vx;
-                        const vRelY = ship.vy - bomb.vy;
+                        const nx = dx / dist, ny = dy / dist;
+                        const vRelX = ship.vx - bomb.vx, vRelY = ship.vy - bomb.vy;
                         const vAlongNormal = vRelX * nx + vRelY * ny;
                         const dampingForce = C.ROPE_DAMPING * vAlongNormal;
-        
-                        const totalRopeForce = springForce + dampingForce;
-        
+                        const totalRopeForce = (C.ROPE_STIFFNESS * stretch) + dampingForce;
                         forceX += nx * totalRopeForce;
                         forceY += ny * totalRopeForce;
                     }
                 });
             }
-        
-            // Apply gravity
             forceY += C.GRAVITY * bomb.mass;
-        
-            // Update bomb physics based on total forces
-            const ax = forceX / bomb.mass;
-            const ay = forceY / bomb.mass;
-        
-            bomb.vx += ax * dt;
-            bomb.vy += ay * dt;
-            
-            // Apply some air resistance/drag to prevent wild swinging
-            bomb.vx *= 0.99;
-            bomb.vy *= 0.99;
-        
-            bomb.x += bomb.vx * dt;
-            bomb.y += bomb.vy * dt;
-        
+            bomb.vx += (forceX / bomb.mass) * dt;
+            bomb.vy += (forceY / bomb.mass) * dt;
+            bomb.vx *= 0.99; bomb.vy *= 0.99;
+            bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt;
             handleWallCollisions(bomb, state);
-        
-            // Update stability and harmony logic if the bomb is armed (two players)
             if (bomb.isArmed) {
-                const p1 = bomb.attachedShips[0];
-                const p2 = bomb.attachedShips[1];
-                if (!p1 || !p2) return; // A player might have been destroyed
-                
+                const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1];
+                if (!p1 || !p2) return;
                 const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI);
                 bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0;
-                
-                if (bomb.harmony === 1) { 
-                    bomb.stability += C.BOMB_STABILITY_REGEN * dt; 
-                } else { 
-                    bomb.stability -= C.BOMB_STABILITY_DRAIN * dt; 
-                }
+                bomb.stability += (bomb.harmony === 1 ? C.BOMB_STABILITY_REGEN : -C.BOMB_STABILITY_DRAIN) * dt;
                 bomb.stability = Math.max(0, Math.min(100, bomb.stability));
             }
         }
 
-        // MODIFIED: Complete function rewrite for toggle logic
         function handleObjectCollisions(ship, state) {
             let onAPad = false;
-            state.levelObjects.forEach(obj => {
-                if (obj.type === 'landing_pad') {
-                    if (isColliding(ship, obj) && ship.vy > 0) {
-                        ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true;
-                    }
-                }
-            });
+            state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) { ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true; } });
             if (!onAPad) { ship.isLanded = false; }
             const bomb = state.bomb;
             const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y);
-
             const isAttached = bomb.attachedShips.includes(ship);
             const inRange = distToBomb < C.ROPE_LENGTH + 40;
-
-            if (ship.wantsToClamp && inRange && !isAttached) {
-                // Attach ship: it wants to, is in range, and isn't already attached.
-                bomb.attachedShips.push(ship);
-                bomb.onPedestal = false;
-            } else if ((!ship.wantsToClamp || !inRange) && isAttached) {
-                // Detach ship: it no longer wants to clamp, OR it moved out of range.
-                const index = bomb.attachedShips.indexOf(ship);
-                if (index > -1) {
-                    bomb.attachedShips.splice(index, 1);
-                }
-                // If detachment was because the ship moved out of range, automatically toggle clamp off.
-                // This prevents instant re-attachment and feels more natural.
-                if (!inRange) {
-                    ship.wantsToClamp = false;
-                }
-            }
-            
-            if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) {
-                bomb.isArmed = true; UI.show('bomb-hud');
-            } else if (bomb.attachedShips.length < 2 && bomb.isArmed) {
-                bomb.isArmed = false; UI.hide('bomb-hud');
-            }
+            if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); bomb.onPedestal = false; } 
+            else if ((!ship.wantsToClamp || !inRange) && isAttached) { const index = bomb.attachedShips.indexOf(ship); if (index > -1) bomb.attachedShips.splice(index, 1); if (!inRange) ship.wantsToClamp = false; }
+            if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } 
+            else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); }
         }
         
-        function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = entity.radius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { if (entity.health !== undefined) { entity.health -= C.DAMAGE_ON_COLLISION; Physics.spawnExplosion(state, entity.x, entity.y, 5);} else if (entity.stability !== undefined) { entity.stability -= C.DAMAGE_ON_COLLISION; Physics.spawnExplosion(state, entity.x, entity.y, 10); } state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
+        function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = entity.radius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { const damage = state.isDevMode ? C.DAMAGE_ON_COLLISION * 0.25 : C.DAMAGE_ON_COLLISION; if (entity.health !== undefined) { entity.health -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 5);} else if (entity.stability !== undefined) { entity.stability -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 10); } state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
         function lerpAngle(start, end, amount) { const d = Math.abs(end - start); if (d > Math.PI) { if (end > start) start += 2 * Math.PI; else end += 2 * Math.PI; } return (start + ((end - start) * amount)) % (2 * Math.PI); }
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
@@ -354,31 +304,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INPUT MODULE ---
     const Input = (() => {
         const keys = {};
-        // MODIFIED: Complete function rewrite for toggle logic
         function init() {
             window.addEventListener('keydown', e => {
-                // Handle one-shot key presses (toggles) on the initial press only
                 if (!e.repeat) {
                     const state = Game.getGameState();
-                    // Toggle clamp state for players if in-game
                     if (state.status === 'playing' || state.status === 'paused') {
-                        if (state.players[0] && e.code === state.players[0].controls.clamp) {
-                            state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
-                        }
-                        if (state.players[1] && e.code === state.players[1].controls.clamp) {
-                            state.players[1].wantsToClamp = !state.players[1].wantsToClamp;
-                        }
+                        if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; }
+                        if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; }
                     }
-                    // Handle global toggles
                     if (e.code === 'KeyP') Game.togglePause();
                     if (e.code === 'KeyH') UI.toggleHelp();
+                    if (e.code === 'KeyV') Game.toggleDevMode(); // MODIFIED: Added dev mode toggle
                 }
-                // Handle continuous key presses (for movement)
                 keys[e.code] = true;
             });
             window.addEventListener('keyup', e => { keys[e.code] = false; });
         }
-        // MODIFIED: Removed clamp key handling from this function
         function getPlayerActions(state) {
             const actions = { p1: {}, p2: {} };
             if (state.players[0]) {
@@ -400,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); }
+        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); }
         function get(id) { return elements[id]; }
         function update(state) {
             if (state.players[0]) updatePlayerHUD(state.players[0], 'p1');
@@ -409,7 +350,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const stability = Math.round(state.bomb.stability);
                 elements['bomb-stability'].textContent = `BOMB: ${stability}%`;
                 elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor);
-
                 const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR';
                 elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`;
                 elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor;
