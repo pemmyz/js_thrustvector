@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale-1.0">
     <title>js_ThrustClone (Co-op)</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -21,7 +21,6 @@
                     <div class="hud-item" id="harmony-meter">HARMONY: -</div>
                     <div class="hud-item" id="bomb-stability">BOMB: -</div>
                 </div>
-                <!-- NEW: Dev Mode Indicator -->
                 <div id="dev-mode-hud" class="hidden">
                     DEV MODE
                 </div>
@@ -41,7 +40,11 @@
                 <h1>js_ThrustClone</h1>
                 <p class="instructions">Select a level to begin.</p>
                 <div id="level-select-container" class="button-container">
-                    <!-- Buttons will be added here by JS -->
+                    <!-- Level buttons will be added here by JS -->
+                </div>
+                <!-- NEW: Button container for settings -->
+                <div id="settings-container" class="button-container">
+                    <!-- Settings buttons will be added here by JS -->
                 </div>
                 <p class="instructions small-text">P2 presses [↑] to join.</p>
             </div>
@@ -63,7 +66,6 @@
                 <p><strong>P2 Controls:</strong> [←]/[→] to Rotate, [↑] to Thrust, [↓] to Clamp.</p>
                 <p><strong>Harmony:</strong> Both ships must clamp the bomb to lift it. Fly smoothly and match your partner's angle to keep the bomb stable. Poor harmony or hard impacts will cause it to explode!</p>
                 <p><strong>Hazards:</strong> Colliding with cave walls will damage your ship. Landing on green pads will repair and refuel you.</p>
-                <!-- NEW: Dev Mode Instructions -->
                 <p><strong>Dev Mode [V]:</strong> Toggle infinite fuel and 75% damage reduction.</p>
                 <button id="close-help-button">Close</button>
             </div>

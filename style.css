@@ -111,11 +111,19 @@ body {
 /* Buttons */
 .button-container { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; }
 button { 
-    padding: 15px 30px; font-family: var(--retro-font); font-size: 1em; background-color: #0d0d1a; color: white; border: 3px solid white; cursor: pointer;
+    padding: 15px 30px; font-family: var(--retro-font); font-size: 0.8em; background-color: #0d0d1a; color: white; border: 3px solid white; cursor: pointer;
     transition: all 0.2s;
 }
 button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color: var(--safe-color); }
 .hidden { display: none !important; }
+
+/* NEW: Settings container for mode toggle */
+#settings-container {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px dashed #555;
+    width: 60%;
+}
 
 /* Help Button in Corner */
 #help-button-container {
@@ -171,7 +179,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 }
 #bomb-stability { color: var(--safe-color); }
 
-/* NEW: Dev Mode HUD Style */
+/* Dev Mode HUD Style */
 #dev-mode-hud {
     position: absolute;
     top: 60px;
