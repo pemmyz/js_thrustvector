@@ -73,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isTwoPlayer = true;
             const p2Start = Levels[state.level].playerStart;
             
-            // --- FIX: Player 2 controls must be lowercase to match the input system ---
             state.players[1] = createShip(1, p2Start.x + 80, p2Start.y, '#dda0dd', '#ff00ff', {
                  up: 'arrowup', left: 'arrowleft', right: 'arrowright', clamp: 'arrowdown'
             });
@@ -86,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return {
                 id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2,
                 radius: 20, health: 100, fuel: 100,
-                isThrusting: false, isClamping: false,
+                isThrusting: false, isClamping: false, isLanded: false,
                 color, glowColor, controls
             };
         }
@@ -148,7 +147,6 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.show('message-screen');
             UI.get('message-screen').querySelector('h1').textContent = "Game Over";
             UI.get('message-screen').querySelector('.instructions').textContent = message;
-            // Repopulate level select for replay
             UI.populateLevelSelect(Levels);
         }
 
@@ -185,11 +183,113 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- PHYSICS MODULE ---
     const Physics = (() => {
         const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, HARMONY_DISTANCE_THRESHOLD: 200, };
-        function update(state, actions, dt) { updateShips(state, actions, dt); updateBomb(state, dt); updateParticles(state, dt); updateCamera(state); }
-        function updateShips(state, actions, dt) { state.players.forEach((ship, index) => { if (ship.health <= 0) return; const action = index === 0 ? actions.p1 : actions.p2; if (action.left) ship.angle -= C.ROTATION_SPEED * dt; if (action.right) ship.angle += C.ROTATION_SPEED * dt; ship.isThrusting = action.up && ship.fuel > 0; if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; ship.fuel -= C.FUEL_CONSUMPTION * dt; if(state.particles.length < 300) spawnThrustParticles(state, ship); } if (!state.bomb.isArmed) ship.vy += C.GRAVITY * dt; ship.x += ship.vx * dt; ship.y += ship.vy * dt; handleWallCollisions(ship, state); handleObjectCollisions(ship, state); }); }
+        
+        function lerpAngle(start, end, amount) {
+            const difference = Math.abs(end - start);
+            if (difference > Math.PI) {
+                if (end > start) {
+                    start += 2 * Math.PI;
+                } else {
+                    end += 2 * Math.PI;
+                }
+            }
+            const value = (start + ((end - start) * amount));
+            return value % (2 * Math.PI);
+        }
+
+        function update(state, actions, dt) {
+            updateShips(state, actions, dt);
+            updateBomb(state, dt);
+            updateParticles(state, dt);
+            updateCamera(state);
+        }
+
+        function updateShips(state, actions, dt) {
+            state.players.forEach((ship, index) => {
+                if (ship.health <= 0) return;
+                
+                const action = index === 0 ? actions.p1 : actions.p2;
+
+                if (ship.isLanded && action.up) {
+                    ship.isLanded = false;
+                    ship.vy -= 80;
+                }
+
+                if (ship.isLanded) {
+                    const targetAngle = -Math.PI / 2;
+                    ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt);
+                    ship.vx *= 0.9;
+                    ship.vy = 0;
+                    ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * dt);
+                    ship.health = Math.min(100, ship.health + C.FUEL_REGEN * dt);
+                    return; 
+                }
+                
+                if (action.left) ship.angle -= C.ROTATION_SPEED * dt;
+                if (action.right) ship.angle += C.ROTATION_SPEED * dt;
+
+                ship.isThrusting = action.up && ship.fuel > 0;
+                if (ship.isThrusting) {
+                    ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt;
+                    ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt;
+                    ship.fuel -= C.FUEL_CONSUMPTION * dt;
+                    if(state.particles.length < 300) spawnThrustParticles(state, ship);
+                }
+                
+                if (!state.bomb.isArmed) {
+                    ship.vy += C.GRAVITY * dt;
+                }
+
+                ship.x += ship.vx * dt;
+                ship.y += ship.vy * dt;
+
+                handleWallCollisions(ship, state);
+                handleObjectCollisions(ship, state);
+            });
+        }
+        
         function updateBomb(state, dt) { const bomb = state.bomb; if (bomb.onPedestal) return; if (bomb.isArmed) { let totalVx = 0, totalVy = 0, totalX = 0, totalY = 0; bomb.attachedShips.forEach(s => { totalVx += s.vx; totalVy += s.vy; totalX += s.x; totalY += s.y; }); bomb.vx = totalVx / bomb.attachedShips.length; bomb.vy = totalVy / bomb.attachedShips.length; bomb.x = totalX / bomb.attachedShips.length; bomb.y = totalY / bomb.attachedShips.length; const p1 = bomb.attachedShips[0]; const p2 = bomb.attachedShips[1]; const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI); const dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2); bomb.harmony = 0; if (angleDiff < C.HARMONY_ANGLE_THRESHOLD && dist < C.HARMONY_DISTANCE_THRESHOLD) { bomb.stability += C.BOMB_STABILITY_REGEN * dt; bomb.harmony = 1; } else { bomb.stability -= C.BOMB_STABILITY_DRAIN * dt; bomb.harmony = 0; } bomb.stability = Math.max(0, Math.min(100, bomb.stability)); if (bomb.stability <= 0) { spawnExplosion(state, bomb.x, bomb.y, 100); bomb.health = 0; Game.endGame("Bomb Destabilized!"); } } else { bomb.vy += C.GRAVITY * dt; bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt; handleWallCollisions(bomb, state); } }
         function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.sqrt(entity.vx**2 + entity.vy**2); const collisionNormal = { x: entity.x - closestPoint.x, y: entity.y - closestPoint.y }; const dist = Math.sqrt(distSq) || 1; collisionNormal.x /= dist; collisionNormal.y /= dist; const penetration = entity.radius - dist; entity.x += collisionNormal.x * penetration; entity.y += collisionNormal.y * penetration; const dot = entity.vx * collisionNormal.x + entity.vy * collisionNormal.y; entity.vx -= 1.5 * dot * collisionNormal.x; entity.vy -= 1.5 * dot * collisionNormal.y; if (impactSpeed > 50) { if (entity.health) { entity.health -= C.DAMAGE_ON_COLLISION; if(entity.health <= 0) spawnExplosion(state, entity.x, entity.y, 50); } if (entity.stability) { entity.stability -= C.DAMAGE_ON_COLLISION; } } return; } } }); }
-        function handleObjectCollisions(ship, state) { state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad') { if (isColliding(ship, obj)) { if (Math.abs(ship.vx) < 15 && Math.abs(ship.vy) < 25 && Math.abs(ship.angle + Math.PI/2) < 0.2) { ship.vy = 0; ship.vx *= 0.8; ship.y = obj.y - ship.radius; ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * (1/60)); ship.health = Math.min(100, ship.health + C.FUEL_REGEN * (1/60)); } else if(ship.vy > 0) { ship.health -= C.DAMAGE_ON_COLLISION / 2; ship.vy *= -0.5; } } } }); const bomb = state.bomb; const distToBomb = Math.sqrt((ship.x - bomb.x)**2 + (ship.y - bomb.y)**2); if (ship.isClamping && distToBomb < bomb.radius + ship.radius + 30) { if (!bomb.attachedShips.includes(ship)) { bomb.attachedShips.push(ship); bomb.onPedestal = false; } } else { const index = bomb.attachedShips.indexOf(ship); if (index > -1) bomb.attachedShips.splice(index, 1); } if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); } }
+
+        function handleObjectCollisions(ship, state) {
+            let onAPad = false;
+            state.levelObjects.forEach(obj => {
+                if (obj.type === 'landing_pad') {
+                    // --- MODIFICATION: Simplified and more forgiving landing logic. ---
+                    // A landing pad should never cause damage.
+                    if (isColliding(ship, obj) && ship.vy > 0) {
+                        // If the ship is touching the pad and moving downwards, initiate the safe landing sequence.
+                        // We no longer check for strict velocity or angle requirements to *start* the landing.
+                        ship.isLanded = true;
+                        ship.y = obj.y - ship.radius; // Snap to the pad surface
+                        onAPad = true;
+                        
+                        // The 'else if' for hard landings that caused damage is completely removed.
+                    }
+                }
+            });
+
+            if (!onAPad) {
+                ship.isLanded = false;
+            }
+
+            const bomb = state.bomb; 
+            const distToBomb = Math.sqrt((ship.x - bomb.x)**2 + (ship.y - bomb.y)**2); 
+            if (ship.isClamping && distToBomb < bomb.radius + ship.radius + 30) { 
+                if (!bomb.attachedShips.includes(ship)) { 
+                    bomb.attachedShips.push(ship); bomb.onPedestal = false; 
+                }
+            } else { 
+                const index = bomb.attachedShips.indexOf(ship); 
+                if (index > -1) bomb.attachedShips.splice(index, 1); 
+            } 
+            if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { 
+                bomb.isArmed = true; UI.show('bomb-hud'); 
+            } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { 
+                bomb.isArmed = false; UI.hide('bomb-hud'); 
+            } 
+        }
+
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
         function spawnExplosion(state, x, y, count) { for(let i=0; i<count; i++) { const speed = Math.random() * 300 + 50; const angle = Math.random() * Math.PI * 2; state.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 3 + 2, color: ['#ff0', '#f80', '#f00'][Math.floor(Math.random()*3)], life: Math.random() * 1 + 0.5, decay: 1 }); } }
