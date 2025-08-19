@@ -48,8 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
             state.levelObjects = levelData.objects.map(o => ({ ...o }));
 
             const p1Start = levelData.playerStart;
+            // MODIFICATION: Changed controls to use e.code values and new clamp key
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', {
-                up: 'w', left: 'a', right: 'd', clamp: 's'
+                up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'ControlLeft'
             });
             
             if (state.isTwoPlayer) addPlayer2(true);
@@ -73,8 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isTwoPlayer = true;
             const p2Start = Levels[state.level].playerStart;
             
+            // MODIFICATION: Changed controls to use e.code values and new clamp key
             state.players[1] = createShip(1, p2Start.x + 80, p2Start.y, '#dda0dd', '#ff00ff', {
-                 up: 'arrowup', left: 'arrowleft', right: 'arrowright', clamp: 'arrowdown'
+                 up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ControlRight'
             });
 
             UI.show('p2-hud');
@@ -175,23 +177,20 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawPauseOverlay(){ ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,width,height); }
         function drawLevel(state) { const zoom = state.camera.zoom; state.levelObjects.forEach(obj => { if (obj.type === 'cave_wall') { ctx.beginPath(); ctx.moveTo(obj.points[0].x, obj.points[0].y); for (let i = 1; i < obj.points.length; i++) { ctx.lineTo(obj.points[i].x, obj.points[i].y); } ctx.strokeStyle = '#556677'; ctx.lineWidth = 15 / zoom; ctx.stroke(); } else if (obj.type === 'landing_pad') { ctx.fillStyle = '#448844'; ctx.fillRect(obj.x, obj.y, obj.width, obj.height); } else if (obj.type === 'extraction_zone') { ctx.fillStyle = 'rgba(0, 255, 0, 0.2)'; ctx.fillRect(obj.x, obj.y, obj.width, obj.height); ctx.strokeStyle = '#0f0'; ctx.lineWidth = 5 / zoom; ctx.strokeRect(obj.x, obj.y, obj.width, obj.height); } }); }
         function drawShip(ship, zoom) { if (ship.health <= 0) return; ctx.save(); ctx.translate(ship.x, ship.y); ctx.rotate(ship.angle + Math.PI / 2); ctx.shadowColor = ship.glowColor; ctx.shadowBlur = 20 / zoom; ctx.fillStyle = ship.color; ctx.beginPath(); ctx.moveTo(0, -ship.radius * 0.8); ctx.lineTo(-ship.radius * 0.6, ship.radius * 0.6); ctx.lineTo(ship.radius * 0.6, ship.radius * 0.6); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.restore(); }
-        function drawBomb(bomb, zoom) { ctx.save(); ctx.translate(bomb.x, bomb.y); if(bomb.isArmed) { bomb.attachedShips.forEach(ship => { ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ship.x - bomb.x, ship.y - bomb.y); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4 / zoom; ctx.stroke(); }); } ctx.shadowColor = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.shadowBlur = bomb.stability / 5 / zoom; ctx.beginPath(); ctx.arc(0, 0, bomb.radius, 0, Math.PI * 2); ctx.fillStyle = '#666'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.8, 0, Math.PI * 2); ctx.fillStyle = '#444'; ctx.fill(); const blinkRate = bomb.isArmed ? 0.5 : 1.5; if (Math.floor(performance.now() / (500 / blinkRate)) % 2 === 0) { ctx.fillStyle = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.3, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; ctx.restore(); }
+        function drawBomb(bomb, zoom) { ctx.save(); ctx.translate(bomb.x, bomb.y); if(bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ship.x - bomb.x, ship.y - bomb.y); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4 / zoom; ctx.stroke(); }); } ctx.shadowColor = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.shadowBlur = bomb.stability / 5 / zoom; ctx.beginPath(); ctx.arc(0, 0, bomb.radius, 0, Math.PI * 2); ctx.fillStyle = '#666'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.8, 0, Math.PI * 2); ctx.fillStyle = '#444'; ctx.fill(); const blinkRate = bomb.isArmed ? 0.5 : 1.5; if (Math.floor(performance.now() / (500 / blinkRate)) % 2 === 0) { ctx.fillStyle = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.3, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; ctx.restore(); }
         function drawParticles(particles) { ctx.globalCompositeOperation = 'lighter'; particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0; ctx.globalCompositeOperation = 'source-over'; }
         return { init, draw, drawPauseOverlay };
     })();
 
     // --- PHYSICS MODULE ---
     const Physics = (() => {
-        const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, HARMONY_DISTANCE_THRESHOLD: 200, };
+        // MODIFICATION: Added ROPE_LENGTH constant
+        const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, HARMONY_DISTANCE_THRESHOLD: 200, ROPE_LENGTH: 100 };
         
         function lerpAngle(start, end, amount) {
             const difference = Math.abs(end - start);
             if (difference > Math.PI) {
-                if (end > start) {
-                    start += 2 * Math.PI;
-                } else {
-                    end += 2 * Math.PI;
-                }
+                if (end > start) { start += 2 * Math.PI; } else { end += 2 * Math.PI; }
             }
             const value = (start + ((end - start) * amount));
             return value % (2 * Math.PI);
@@ -201,6 +200,10 @@ document.addEventListener('DOMContentLoaded', () => {
             updateShips(state, actions, dt);
             updateBomb(state, dt);
             updateParticles(state, dt);
+            // MODIFICATION: Apply rope constraints after all movement
+            if (state.bomb.isArmed) {
+                applyRopeConstraints(state);
+            }
             updateCamera(state);
         }
 
@@ -236,9 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if(state.particles.length < 300) spawnThrustParticles(state, ship);
                 }
                 
-                if (!state.bomb.isArmed) {
-                    ship.vy += C.GRAVITY * dt;
-                }
+                // MODIFICATION: Gravity is now ALWAYS applied to ships.
+                // The rope tension will counteract it when attached.
+                ship.vy += C.GRAVITY * dt;
 
                 ship.x += ship.vx * dt;
                 ship.y += ship.vy * dt;
@@ -248,31 +251,78 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        function updateBomb(state, dt) { const bomb = state.bomb; if (bomb.onPedestal) return; if (bomb.isArmed) { let totalVx = 0, totalVy = 0, totalX = 0, totalY = 0; bomb.attachedShips.forEach(s => { totalVx += s.vx; totalVy += s.vy; totalX += s.x; totalY += s.y; }); bomb.vx = totalVx / bomb.attachedShips.length; bomb.vy = totalVy / bomb.attachedShips.length; bomb.x = totalX / bomb.attachedShips.length; bomb.y = totalY / bomb.attachedShips.length; const p1 = bomb.attachedShips[0]; const p2 = bomb.attachedShips[1]; const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI); const dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2); bomb.harmony = 0; if (angleDiff < C.HARMONY_ANGLE_THRESHOLD && dist < C.HARMONY_DISTANCE_THRESHOLD) { bomb.stability += C.BOMB_STABILITY_REGEN * dt; bomb.harmony = 1; } else { bomb.stability -= C.BOMB_STABILITY_DRAIN * dt; bomb.harmony = 0; } bomb.stability = Math.max(0, Math.min(100, bomb.stability)); if (bomb.stability <= 0) { spawnExplosion(state, bomb.x, bomb.y, 100); bomb.health = 0; Game.endGame("Bomb Destabilized!"); } } else { bomb.vy += C.GRAVITY * dt; bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt; handleWallCollisions(bomb, state); } }
-        function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.sqrt(entity.vx**2 + entity.vy**2); const collisionNormal = { x: entity.x - closestPoint.x, y: entity.y - closestPoint.y }; const dist = Math.sqrt(distSq) || 1; collisionNormal.x /= dist; collisionNormal.y /= dist; const penetration = entity.radius - dist; entity.x += collisionNormal.x * penetration; entity.y += collisionNormal.y * penetration; const dot = entity.vx * collisionNormal.x + entity.vy * collisionNormal.y; entity.vx -= 1.5 * dot * collisionNormal.x; entity.vy -= 1.5 * dot * collisionNormal.y; if (impactSpeed > 50) { if (entity.health) { entity.health -= C.DAMAGE_ON_COLLISION; if(entity.health <= 0) spawnExplosion(state, entity.x, entity.y, 50); } if (entity.stability) { entity.stability -= C.DAMAGE_ON_COLLISION; } } return; } } }); }
+        function updateBomb(state, dt) {
+            const bomb = state.bomb;
+            if (bomb.onPedestal) return;
 
+            // MODIFICATION: Bomb physics completely rewritten for rope mechanic
+            if (bomb.isArmed) {
+                // Harmony is still relevant for stability
+                const p1 = bomb.attachedShips[0];
+                const p2 = bomb.attachedShips[1];
+                const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI);
+                
+                bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0;
+                if (bomb.harmony === 1) {
+                    bomb.stability += C.BOMB_STABILITY_REGEN * dt;
+                } else {
+                    bomb.stability -= C.BOMB_STABILITY_DRAIN * dt;
+                }
+                bomb.stability = Math.max(0, Math.min(100, bomb.stability));
+
+                if (bomb.stability <= 0) {
+                     spawnExplosion(state, bomb.x, bomb.y, 100);
+                     bomb.health = 0; // Effectively destroys bomb
+                     Game.endGame("Bomb Destabilized!");
+                }
+            }
+            
+            // Bomb always has its own gravity and momentum when not on the pedestal
+            bomb.vy += C.GRAVITY * dt;
+            bomb.x += bomb.vx * dt;
+            bomb.y += bomb.vy * dt;
+            handleWallCollisions(bomb, state);
+        }
+        
+        // MODIFICATION: New function to handle the rope physics using position-based constraints
+        function applyRopeConstraints(state) {
+            const bomb = state.bomb;
+            // This loop can run a few times for more stability, but once is fine for an arcade feel
+            for (let i = 0; i < 3; i++) {
+                bomb.attachedShips.forEach(ship => {
+                    const dx = bomb.x - ship.x;
+                    const dy = bomb.y - ship.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > C.ROPE_LENGTH) {
+                        const excessLength = distance - C.ROPE_LENGTH;
+                        const correctionX = (dx / distance) * excessLength;
+                        const correctionY = (dy / distance) * excessLength;
+
+                        // Move both the ship and the bomb to satisfy the constraint
+                        // They each move half the distance to meet in the middle.
+                        ship.x += correctionX * 0.5;
+                        ship.y += correctionY * 0.5;
+                        bomb.x -= correctionX * 0.5;
+                        bomb.y -= correctionY * 0.5;
+                    }
+                });
+            }
+        }
+
+        function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.sqrt(entity.vx**2 + entity.vy**2); const collisionNormal = { x: entity.x - closestPoint.x, y: entity.y - closestPoint.y }; const dist = Math.sqrt(distSq) || 1; collisionNormal.x /= dist; collisionNormal.y /= dist; const penetration = entity.radius - dist; entity.x += collisionNormal.x * penetration; entity.y += collisionNormal.y * penetration; const dot = entity.vx * collisionNormal.x + entity.vy * collisionNormal.y; entity.vx -= 1.5 * dot * collisionNormal.x; entity.vy -= 1.5 * dot * collisionNormal.y; if (impactSpeed > 50) { if (entity.health) { entity.health -= C.DAMAGE_ON_COLLISION; if(entity.health <= 0) spawnExplosion(state, entity.x, entity.y, 50); } if (entity.stability) { entity.stability -= C.DAMAGE_ON_COLLISION; } } return; } } }); }
         function handleObjectCollisions(ship, state) {
             let onAPad = false;
             state.levelObjects.forEach(obj => {
                 if (obj.type === 'landing_pad') {
-                    // --- MODIFICATION: Simplified and more forgiving landing logic. ---
-                    // A landing pad should never cause damage.
                     if (isColliding(ship, obj) && ship.vy > 0) {
-                        // If the ship is touching the pad and moving downwards, initiate the safe landing sequence.
-                        // We no longer check for strict velocity or angle requirements to *start* the landing.
                         ship.isLanded = true;
-                        ship.y = obj.y - ship.radius; // Snap to the pad surface
+                        ship.y = obj.y - ship.radius;
                         onAPad = true;
-                        
-                        // The 'else if' for hard landings that caused damage is completely removed.
                     }
                 }
             });
-
-            if (!onAPad) {
-                ship.isLanded = false;
-            }
-
+            if (!onAPad) { ship.isLanded = false; }
             const bomb = state.bomb; 
             const distToBomb = Math.sqrt((ship.x - bomb.x)**2 + (ship.y - bomb.y)**2); 
             if (ship.isClamping && distToBomb < bomb.radius + ship.radius + 30) { 
@@ -289,7 +339,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 bomb.isArmed = false; UI.hide('bomb-hud'); 
             } 
         }
-
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
         function spawnExplosion(state, x, y, count) { for(let i=0; i<count; i++) { const speed = Math.random() * 300 + 50; const angle = Math.random() * Math.PI * 2; state.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 3 + 2, color: ['#ff0', '#f80', '#f00'][Math.floor(Math.random()*3)], life: Math.random() * 1 + 0.5, decay: 1 }); } }
@@ -303,12 +352,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = {};
 
         function init() {
+            // FIX: Using e.code to reliably distinguish left/right control keys
             window.addEventListener('keydown', e => {
-                keys[e.key.toLowerCase()] = true;
-                if (e.key.toLowerCase() === 'p') Game.togglePause();
-                if (e.key.toLowerCase() === 'h') UI.toggleHelp();
+                keys[e.code] = true;
+                if (e.code === 'KeyP') Game.togglePause();
+                if (e.code === 'KeyH') UI.toggleHelp();
             });
-            window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('keyup', e => {
+                keys[e.code] = false;
+            });
         }
 
         function getPlayerActions(state) {
@@ -324,7 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
                 state.players[1].isClamping = keys[c2.clamp];
             } else {
-                 actions.p2 = { up: keys['arrowup'] };
+                 // MODIFICATION: Check for P2 join using e.code
+                 actions.p2 = { up: keys['ArrowUp'] };
             }
             return actions;
         }
@@ -336,30 +389,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-
         function init() {
             const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 
             'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 
             'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button'];
             ids.forEach(id => elements[id] = document.getElementById(id));
-            
             elements['toggle-help-button'].addEventListener('click', toggleHelp);
             elements['close-help-button'].addEventListener('click', () => hide('help-screen'));
         }
-
         function get(id) { return elements[id]; }
-
         function update(state) {
             if (state.players[0]) updatePlayerHUD(state.players[0], 'p1');
             if (state.players[1]) updatePlayerHUD(state.players[1], 'p2');
             if (state.bomb && state.bomb.isArmed) { const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); }
         }
-        
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
         function show(id) { elements[id].classList.remove('hidden'); }
         function hide(id) { elements[id].classList.add('hidden'); }
         function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
-
         function populateLevelSelect(levels) {
             const container = elements['level-select-container'];
             container.innerHTML = '';
@@ -370,22 +417,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 container.appendChild(button);
             });
         }
-
         function toggleHelp() {
             const helpScreen = elements['help-screen'];
             const isHidden = helpScreen.classList.contains('hidden');
-            
             if (isHidden) {
                 const gameState = Game.getGameState();
-                if(gameState.status === 'playing') {
-                    Game.togglePause(true);
-                }
+                if(gameState.status === 'playing') { Game.togglePause(true); }
                 show('help-screen');
             } else {
                 hide('help-screen');
             }
         }
-
         return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp };
     })();
 
@@ -407,16 +449,8 @@ document.addEventListener('DOMContentLoaded', () => {
             playerStart: { x: 250, y: 300 },
             bombStart: { x: 1250, y: 2400 },
             objects: [
-                { type: 'cave_wall', points: [
-                    {x: 0, y: 2500}, {x: 0, y: 250}, {x: 500, y: 250}, {x: 600, y: 350}, {x: 1500, y: 350}, {x: 1600, y: 250}, {x: 2000, y: 250}, {x: 2000, y: 2500}, {x: 0, y: 2500}
-                ]},
-                { type: 'cave_wall', points: [
-                    {x: 200, y: 500}, {x: 400, y: 650}, {x: 600, y: 600},
-                    {x: 800, y: 900}, {x: 700, y: 1200}, {x: 900, y: 1500},
-                    {x: 1300, y: 1600}, {x: 1600, y: 1400}, {x: 1800, y: 1700},
-                    {x: 1700, y: 2000}, {x: 1400, y: 2200}, {x: 1100, y: 2100},
-                    {x: 800, y: 2300}, {x: 1000, y: 2500}, {x: 1500, y: 2500}, {x: 1700, y: 2300}
-                ]},
+                { type: 'cave_wall', points: [ {x: 0, y: 2500}, {x: 0, y: 250}, {x: 500, y: 250}, {x: 600, y: 350}, {x: 1500, y: 350}, {x: 1600, y: 250}, {x: 2000, y: 250}, {x: 2000, y: 2500}, {x: 0, y: 2500} ]},
+                { type: 'cave_wall', points: [ {x: 200, y: 500}, {x: 400, y: 650}, {x: 600, y: 600}, {x: 800, y: 900}, {x: 700, y: 1200}, {x: 900, y: 1500}, {x: 1300, y: 1600}, {x: 1600, y: 1400}, {x: 1800, y: 1700}, {x: 1700, y: 2000}, {x: 1400, y: 2200}, {x: 1100, y: 2100}, {x: 800, y: 2300}, {x: 1000, y: 2500}, {x: 1500, y: 2500}, {x: 1700, y: 2300} ]},
                 { type: 'landing_pad', x: 200, y: 450, width: 100, height: 10 },
                 { type: 'landing_pad', x: 850, y: 1490, width: 100, height: 10 },
                 { type: 'landing_pad', x: 1200, y: 2450, width: 100, height: 10 },
