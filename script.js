@@ -12,7 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
             bomb: null,
             particles: [],
             levelObjects: [],
-            // Using the newer camera with screen shake
             camera: { x: 0, y: 0, zoom: 0.4, shake: { duration: 0, magnitude: 0 } },
             status: 'menu',
             isTwoPlayer: false,
@@ -42,9 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
             state.particles = [];
             state.levelObjects = levelData.objects.map(o => ({ ...o }));
             const p1Start = levelData.playerStart;
-            // Using the newer controls from the advanced script
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', {
-                up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'ControlLeft'
+                up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'KeyS'
             });
             if (state.isTwoPlayer) addPlayer2(true);
             const bombStart = levelData.bombStart;
@@ -64,18 +62,17 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isTwoPlayer = true;
             const p2Start = Levels[state.level].playerStart;
             state.players[1] = createShip(1, p2Start.x + 80, p2Start.y, '#dda0dd', '#ff00ff', {
-                 up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ControlRight'
+                 up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ArrowDown'
             });
             UI.show('p2-hud');
             if (!silent) console.log("Player 2 has joined!");
         }
         
-        // --- PHYSICS MERGE: Using the simpler Euler-style entity structure ---
         function createShip(id, x, y, color, glowColor, controls) {
             return {
                 id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2,
-                radius: 20, health: 100, fuel: 100,
-                isThrusting: false, isClamping: false, isLanded: false,
+                radius: 20, health: 100, fuel: 100, mass: 1, // Ship mass for physics
+                isThrusting: false, wantsToClamp: false, isLanded: false, // MODIFIED: isClamping -> wantsToClamp
                 color, glowColor, controls
             };
         }
@@ -83,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function createBomb(x, y) {
             return {
                 x, y, vx: 0, vy: 0,
-                radius: 30, mass: 5,
+                radius: 30, mass: 5, // Bomb is 5x heavier than a ship
                 stability: 100,
                 harmony: 0,
                 attachedShips: [],
@@ -98,7 +95,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const deltaTime = Math.min(0.05, (timestamp - lastTime) / 1000);
             lastTime = timestamp;
             if (state.status === 'playing') {
-                // Using the simpler getPlayerActions -> Physics.update flow
                 const actions = Input.getPlayerActions(state);
                 if (!state.isTwoPlayer && actions.p2.up) addPlayer2();
                 Physics.update(state, actions, deltaTime);
@@ -167,19 +163,15 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawPauseOverlay(){ ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,width,height); }
         function drawLevel(state) { const zoom = state.camera.zoom; state.levelObjects.forEach(obj => { if (obj.type === 'cave_wall') { ctx.beginPath(); ctx.moveTo(obj.points[0].x, obj.points[0].y); for (let i = 1; i < obj.points.length; i++) { ctx.lineTo(obj.points[i].x, obj.points[i].y); } ctx.strokeStyle = '#556677'; ctx.lineWidth = 15 / zoom; ctx.stroke(); } else if (obj.type === 'landing_pad') { ctx.fillStyle = '#448844'; ctx.fillRect(obj.x, obj.y, obj.width, obj.height); } else if (obj.type === 'extraction_zone') { ctx.fillStyle = 'rgba(0, 255, 0, 0.2)'; ctx.fillRect(obj.x, obj.y, obj.width, obj.height); ctx.strokeStyle = '#0f0'; ctx.lineWidth = 5 / zoom; ctx.strokeRect(obj.x, obj.y, obj.width, obj.height); } }); }
         
-        // PHYSICS MERGE: Using entity.x, entity.y
         function drawShip(ship, zoom) { if (ship.health <= 0) return; ctx.save(); ctx.translate(ship.x, ship.y); ctx.rotate(ship.angle + Math.PI / 2); ctx.shadowColor = ship.glowColor; ctx.shadowBlur = 20 / zoom; ctx.fillStyle = ship.color; ctx.beginPath(); ctx.moveTo(0, -ship.radius * 0.8); ctx.lineTo(-ship.radius * 0.6, ship.radius * 0.6); ctx.lineTo(ship.radius * 0.6, ship.radius * 0.6); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.restore(); }
-        // PHYSICS MERGE: Drawing simple rope from bomb to ship
         function drawBomb(bomb, zoom) { ctx.save(); ctx.translate(bomb.x, bomb.y); if(bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ship.x - bomb.x, ship.y - bomb.y); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4 / zoom; ctx.stroke(); }); } ctx.shadowColor = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.shadowBlur = (100 - bomb.stability) / 5 / zoom; ctx.beginPath(); ctx.arc(0, 0, bomb.radius, 0, Math.PI * 2); ctx.fillStyle = '#666'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.8, 0, Math.PI * 2); ctx.fillStyle = '#444'; ctx.fill(); const blinkRate = bomb.isArmed ? 0.5 : 1.5; if (Math.floor(performance.now() / (500 / blinkRate)) % 2 === 0) { ctx.fillStyle = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.3, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; ctx.restore(); }
-        // PHYSICS MERGE: Using particle.x, particle.y
         function drawParticles(particles) { ctx.globalCompositeOperation = 'lighter'; particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0; ctx.globalCompositeOperation = 'source-over'; }
         return { init, draw, drawPauseOverlay };
     })();
 
     // --- PHYSICS MODULE (EULER INTEGRATION) ---
     const Physics = (() => {
-        // PHYSICS MERGE: Constants from the simpler Euler physics model
-        const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, HARMONY_DISTANCE_THRESHOLD: 200 };
+        const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, HARMONY_DISTANCE_THRESHOLD: 200, ROPE_LENGTH: 100, ROPE_STIFFNESS: 120, ROPE_DAMPING: 8 };
         
         function update(state, actions, dt) {
             updateShips(state, actions, dt);
@@ -188,7 +180,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updateCamera(state, dt);
         }
         
-        // PHYSICS MERGE: updateShips from Euler model
         function updateShips(state, actions, dt) {
             state.players.forEach((ship, index) => {
                 if (ship.health <= 0) return;
@@ -199,7 +190,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (action.right) ship.angle += C.ROTATION_SPEED * dt;
                 ship.isThrusting = action.up && ship.fuel > 0;
                 if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; ship.fuel -= C.FUEL_CONSUMPTION * dt; if(state.particles.length < 300) spawnThrustParticles(state, ship); }
+                
                 ship.vy += C.GRAVITY * dt;
+
+                // Apply force from bomb's rope if attached
+                if (state.bomb.attachedShips.includes(ship)) {
+                    const bomb = state.bomb;
+                    const dx = bomb.x - ship.x;
+                    const dy = bomb.y - ship.y;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    
+                    if (dist > C.ROPE_LENGTH) { // Rope only pulls, does not push
+                        const stretch = dist - C.ROPE_LENGTH;
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+
+                        const springForce = C.ROPE_STIFFNESS * stretch;
+                        
+                        const vRelX = bomb.vx - ship.vx;
+                        const vRelY = bomb.vy - ship.vy;
+                        const vAlongNormal = vRelX * nx + vRelY * ny;
+                        const dampingForce = C.ROPE_DAMPING * vAlongNormal;
+
+                        const totalForce = springForce + dampingForce;
+                        const forceX = nx * totalForce;
+                        const forceY = ny * totalForce;
+
+                        // Apply force to ship's acceleration (a = F/m)
+                        ship.vx += (forceX / ship.mass) * dt;
+                        ship.vy += (forceY / ship.mass) * dt;
+                    }
+                }
+
                 ship.x += ship.vx * dt;
                 ship.y += ship.vy * dt;
                 handleWallCollisions(ship, state);
@@ -207,32 +229,78 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // PHYSICS MERGE: updateBomb from Euler model
         function updateBomb(state, dt) {
             const bomb = state.bomb;
             if (bomb.onPedestal) return;
+        
+            let forceX = 0;
+            let forceY = 0;
+        
+            // Apply forces from attached ship ropes
+            if (bomb.attachedShips.length > 0) {
+                bomb.attachedShips.forEach(ship => {
+                    const dx = ship.x - bomb.x;
+                    const dy = ship.y - bomb.y;
+                    const dist = Math.hypot(dx, dy) || 1;
+        
+                    if (dist > C.ROPE_LENGTH) { // Rope only pulls
+                        const stretch = dist - C.ROPE_LENGTH;
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+        
+                        const springForce = C.ROPE_STIFFNESS * stretch;
+        
+                        const vRelX = ship.vx - bomb.vx;
+                        const vRelY = ship.vy - bomb.vy;
+                        const vAlongNormal = vRelX * nx + vRelY * ny;
+                        const dampingForce = C.ROPE_DAMPING * vAlongNormal;
+        
+                        const totalRopeForce = springForce + dampingForce;
+        
+                        forceX += nx * totalRopeForce;
+                        forceY += ny * totalRopeForce;
+                    }
+                });
+            }
+        
+            // Apply gravity
+            forceY += C.GRAVITY * bomb.mass;
+        
+            // Update bomb physics based on total forces
+            const ax = forceX / bomb.mass;
+            const ay = forceY / bomb.mass;
+        
+            bomb.vx += ax * dt;
+            bomb.vy += ay * dt;
+            
+            // Apply some air resistance/drag to prevent wild swinging
+            bomb.vx *= 0.99;
+            bomb.vy *= 0.99;
+        
+            bomb.x += bomb.vx * dt;
+            bomb.y += bomb.vy * dt;
+        
+            handleWallCollisions(bomb, state);
+        
+            // Update stability and harmony logic if the bomb is armed (two players)
             if (bomb.isArmed) {
-                let totalVx = 0, totalVy = 0, totalX = 0, totalY = 0;
-                bomb.attachedShips.forEach(s => { totalVx += s.vx; totalVy += s.vy; totalX += s.x; totalY += s.y; });
-                bomb.vx = totalVx / bomb.attachedShips.length;
-                bomb.vy = totalVy / bomb.attachedShips.length;
-                bomb.x = totalX / bomb.attachedShips.length;
-                bomb.y = totalY / bomb.attachedShips.length;
+                const p1 = bomb.attachedShips[0];
+                const p2 = bomb.attachedShips[1];
+                if (!p1 || !p2) return; // A player might have been destroyed
                 
-                const p1 = bomb.attachedShips[0]; const p2 = bomb.attachedShips[1];
                 const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI);
                 bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0;
-                if (bomb.harmony === 1) { bomb.stability += C.BOMB_STABILITY_REGEN * dt; } else { bomb.stability -= C.BOMB_STABILITY_DRAIN * dt; }
+                
+                if (bomb.harmony === 1) { 
+                    bomb.stability += C.BOMB_STABILITY_REGEN * dt; 
+                } else { 
+                    bomb.stability -= C.BOMB_STABILITY_DRAIN * dt; 
+                }
                 bomb.stability = Math.max(0, Math.min(100, bomb.stability));
-            } else {
-                bomb.vy += C.GRAVITY * dt;
-                bomb.x += bomb.vx * dt;
-                bomb.y += bomb.vy * dt;
-                handleWallCollisions(bomb, state);
             }
         }
 
-        // PHYSICS MERGE: handleObjectCollisions from Euler model
+        // MODIFIED: Complete function rewrite for toggle logic
         function handleObjectCollisions(ship, state) {
             let onAPad = false;
             state.levelObjects.forEach(obj => {
@@ -245,14 +313,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!onAPad) { ship.isLanded = false; }
             const bomb = state.bomb;
             const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y);
-            if (ship.isClamping && distToBomb < bomb.radius + ship.radius + 30) {
-                if (!bomb.attachedShips.includes(ship)) {
-                    bomb.attachedShips.push(ship); bomb.onPedestal = false;
-                }
-            } else {
+
+            const isAttached = bomb.attachedShips.includes(ship);
+            const inRange = distToBomb < C.ROPE_LENGTH + 40;
+
+            if (ship.wantsToClamp && inRange && !isAttached) {
+                // Attach ship: it wants to, is in range, and isn't already attached.
+                bomb.attachedShips.push(ship);
+                bomb.onPedestal = false;
+            } else if ((!ship.wantsToClamp || !inRange) && isAttached) {
+                // Detach ship: it no longer wants to clamp, OR it moved out of range.
                 const index = bomb.attachedShips.indexOf(ship);
-                if (index > -1) bomb.attachedShips.splice(index, 1);
+                if (index > -1) {
+                    bomb.attachedShips.splice(index, 1);
+                }
+                // If detachment was because the ship moved out of range, automatically toggle clamp off.
+                // This prevents instant re-attachment and feels more natural.
+                if (!inRange) {
+                    ship.wantsToClamp = false;
+                }
             }
+            
             if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) {
                 bomb.isArmed = true; UI.show('bomb-hud');
             } else if (bomb.attachedShips.length < 2 && bomb.isArmed) {
@@ -260,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = entity.radius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { if (entity.health) entity.health -= C.DAMAGE_ON_COLLISION; else if (entity.stability) entity.stability -= C.DAMAGE_ON_COLLISION; state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
+        function handleWallCollisions(entity, state) { state.levelObjects.filter(o=>o.type==='cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i+1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x)**2 + (entity.y - closestPoint.y)**2; if (distSq < entity.radius * entity.radius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = entity.radius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { if (entity.health !== undefined) { entity.health -= C.DAMAGE_ON_COLLISION; Physics.spawnExplosion(state, entity.x, entity.y, 5);} else if (entity.stability !== undefined) { entity.stability -= C.DAMAGE_ON_COLLISION; Physics.spawnExplosion(state, entity.x, entity.y, 10); } state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
         function lerpAngle(start, end, amount) { const d = Math.abs(end - start); if (d > Math.PI) { if (end > start) start += 2 * Math.PI; else end += 2 * Math.PI; } return (start + ((end - start) * amount)) % (2 * Math.PI); }
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
@@ -273,21 +354,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INPUT MODULE ---
     const Input = (() => {
         const keys = {};
+        // MODIFIED: Complete function rewrite for toggle logic
         function init() {
-            window.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyP') Game.togglePause(); if (e.code === 'KeyH') UI.toggleHelp(); });
+            window.addEventListener('keydown', e => {
+                // Handle one-shot key presses (toggles) on the initial press only
+                if (!e.repeat) {
+                    const state = Game.getGameState();
+                    // Toggle clamp state for players if in-game
+                    if (state.status === 'playing' || state.status === 'paused') {
+                        if (state.players[0] && e.code === state.players[0].controls.clamp) {
+                            state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
+                        }
+                        if (state.players[1] && e.code === state.players[1].controls.clamp) {
+                            state.players[1].wantsToClamp = !state.players[1].wantsToClamp;
+                        }
+                    }
+                    // Handle global toggles
+                    if (e.code === 'KeyP') Game.togglePause();
+                    if (e.code === 'KeyH') UI.toggleHelp();
+                }
+                // Handle continuous key presses (for movement)
+                keys[e.code] = true;
+            });
             window.addEventListener('keyup', e => { keys[e.code] = false; });
         }
+        // MODIFIED: Removed clamp key handling from this function
         function getPlayerActions(state) {
             const actions = { p1: {}, p2: {} };
             if (state.players[0]) {
                 const c1 = state.players[0].controls;
                 actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] };
-                state.players[0].isClamping = keys[c1.clamp];
             }
             if (state.players[1]) {
                 const c2 = state.players[1].controls;
                 actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
-                state.players[1].isClamping = keys[c2.clamp];
             } else {
                  actions.p2 = { up: keys['ArrowUp'] };
             }
@@ -305,12 +405,11 @@ document.addEventListener('DOMContentLoaded', () => {
         function update(state) {
             if (state.players[0]) updatePlayerHUD(state.players[0], 'p1');
             if (state.players[1]) updatePlayerHUD(state.players[1], 'p2');
-            if (state.bomb) {
+            if (state.bomb && state.bomb.isArmed) {
                 const stability = Math.round(state.bomb.stability);
                 elements['bomb-stability'].textContent = `BOMB: ${stability}%`;
                 elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor);
-            }
-            if (state.bomb && state.bomb.isArmed) {
+
                 const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR';
                 elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`;
                 elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor;
