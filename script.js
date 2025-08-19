@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.init();
             Input.init();
             Renderer.init();
-            UI.populateLevelSelect(Levels); // Populate level buttons
+            UI.populateLevelSelect(Levels);
             bindEvents();
             resetGame();
         }
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state = JSON.parse(JSON.stringify(initialGameState));
         }
 
-        function startGame(levelIndex) { // Takes levelIndex as an argument
+        function startGame(levelIndex) {
             resetGame();
             UI.hide('message-screen');
             loadLevel(levelIndex);
@@ -72,9 +72,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.isTwoPlayer && !silent) return;
             state.isTwoPlayer = true;
             const p2Start = Levels[state.level].playerStart;
+            
+            // --- FIX: Player 2 controls must be lowercase to match the input system ---
             state.players[1] = createShip(1, p2Start.x + 80, p2Start.y, '#dda0dd', '#ff00ff', {
-                 up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ArrowDown'
+                 up: 'arrowup', left: 'arrowleft', right: 'arrowright', clamp: 'arrowdown'
             });
+
             UI.show('p2-hud');
             if (!silent) console.log("Player 2 has joined!");
         }
@@ -156,11 +159,11 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (state.status === 'paused') {
                 state.status = 'playing';
                 UI.hide('pause-screen');
-                UI.hide('help-screen'); // Also hide help on unpause
+                UI.hide('help-screen');
             }
         }
         
-        const getGameState = () => state; // Helper to get state for UI module
+        const getGameState = () => state;
 
         return { init, togglePause, endGame, startGame, getGameState };
     })();
@@ -217,12 +220,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             if (state.players[1]) {
-                // If P2 exists, get their full range of actions
                 const c2 = state.players[1].controls;
                 actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
                 state.players[1].isClamping = keys[c2.clamp];
             } else {
-                 // If P2 does NOT exist, ONLY check for the join key
                  actions.p2 = { up: keys['arrowup'] };
             }
             return actions;
@@ -261,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function populateLevelSelect(levels) {
             const container = elements['level-select-container'];
-            container.innerHTML = ''; // Clear previous buttons
+            container.innerHTML = '';
             levels.forEach((level, index) => {
                 const button = document.createElement('button');
                 button.textContent = level.name;
@@ -277,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isHidden) {
                 const gameState = Game.getGameState();
                 if(gameState.status === 'playing') {
-                    Game.togglePause(true); // Force pause
+                    Game.togglePause(true);
                 }
                 show('help-screen');
             } else {
