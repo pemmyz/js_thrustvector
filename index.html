@@ -10,19 +10,17 @@
 <body>
     <div id="game-container">
         <div id="screen">
-            <!-- HUD for js_ThrustClone -->
+            <!-- HUD (No changes needed here) -->
             <div id="hud">
                 <div class="player-hud" id="p1-hud">
                     <div>P1 🚀</div>
                     <div class="hud-item" id="p1-fuel">FUEL: 100%</div>
                     <div class="hud-item" id="p1-health">HP: 100%</div>
                 </div>
-                
                 <div id="bomb-hud" class="hidden">
                     <div class="hud-item" id="harmony-meter">HARMONY: -</div>
                     <div class="hud-item" id="bomb-stability">BOMB: -</div>
                 </div>
-
                 <div class="player-hud hidden" id="p2-hud">
                     <div>P2 🚀</div>
                     <div class="hud-item" id="p2-fuel">FUEL: 100%</div>
@@ -31,20 +29,18 @@
             </div>
             
             <div id="game-area">
-                <!-- All gameplay happens on the canvas -->
                 <canvas id="game-canvas"></canvas>
             </div>
 
             <!-- Game Over / Start Screen -->
             <div id="message-screen">
                 <h1>js_ThrustClone</h1>
-                <p class="instructions">P1: [A]/[D] Rotate, [W] Thrust</p>
-                <p class="instructions">P2: [←]/[→] Rotate, [↑] Thrust</p>
-                <p class="instructions">Work together to carry the BOMB to the surface!</p>
-                <p class="instructions">Press P2 Thrust to join.</p>
-                <div class="button-container">
-                    <button id="start-button">Start Game</button>
+                <p class="instructions">Select a level to begin.</p>
+                <!-- NEW: Level Selection Container -->
+                <div id="level-select-container" class="button-container">
+                    <!-- Buttons will be added here by JS -->
                 </div>
+                <p class="instructions small-text">P2 presses [↑] to join.</p>
             </div>
 
             <!-- In-Game Message Overlay -->
@@ -53,9 +49,24 @@
             <!-- Pause Screen Overlay -->
             <div id="pause-screen" class="hidden">
                 <h2>PAUSED</h2>
-                <p>Fly in harmony. Match your partner's angle and thrust to keep the bomb stable.</p>
                 <p>Press [P] to Resume</p>
             </div>
+
+            <!-- NEW: Help Screen Overlay -->
+            <div id="help-screen" class="hidden">
+                <h2>How to Play</h2>
+                <p><strong>Objective:</strong> Work together to carry the bomb from the cavern to the green extraction zone at the surface.</p>
+                <p><strong>P1 Controls:</strong> [A]/[D] to Rotate, [W] to Thrust, [S] to Clamp.</p>
+                <p><strong>P2 Controls:</strong> [←]/[→] to Rotate, [↑] to Thrust, [↓] to Clamp.</p>
+                <p><strong>Harmony:</strong> Both ships must clamp the bomb to lift it. Fly smoothly and match your partner's angle to keep the bomb stable. Poor harmony or hard impacts will cause it to explode!</p>
+                <p><strong>Hazards:</strong> Colliding with cave walls will damage your ship. Landing on green pads will repair and refuel you.</p>
+                <button id="close-help-button">Close</button>
+            </div>
+        </div>
+
+        <!-- NEW: Help Button Container -->
+        <div id="help-button-container">
+            <button id="toggle-help-button">Press [H] for Help</button>
         </div>
     </div>
     <script src="script.js"></script>

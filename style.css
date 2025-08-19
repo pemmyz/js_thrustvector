@@ -22,6 +22,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    position: relative; /* Needed for positioning the help button */
 }
 
 #screen {
@@ -29,7 +30,7 @@ body {
     height: 70vw;
     max-width: 1024px;
     max-height: 768px;
-    background-color: #0d0d1a; /* Dark blue/black space */
+    background-color: #0d0d1a;
     border-radius: 2em;
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.9);
     padding: 1.5em;
@@ -67,7 +68,7 @@ body {
 }
 
 /* Overlays */
-#message-screen, #level-message-screen, #pause-screen {
+#message-screen, #level-message-screen, #pause-screen, #help-screen {
     position: absolute;
     top: 1.5em;
     left: 1.5em;
@@ -81,27 +82,61 @@ body {
     text-align: center;
     z-index: 50;
     transition: opacity 0.5s;
+    padding: 2em;
+    box-sizing: border-box;
 }
 
-#message-screen.hidden, #level-message-screen.hidden, #pause-screen.hidden {
+#message-screen.hidden, #level-message-screen.hidden, #pause-screen.hidden, #help-screen.hidden {
     opacity: 0;
     pointer-events: none;
 }
 
 #message-screen h1 { font-size: 2em; color: var(--safe-color); margin-bottom: 20px; }
 #message-screen .instructions { font-size: 0.8em; line-height: 2; }
+#message-screen .small-text { font-size: 0.6em; margin-top: 25px; opacity: 0.7; }
 #level-message-screen { font-size: 2.5em; color: var(--safe-color); text-shadow: 3px 3px 0 #000; }
 #pause-screen h2 { font-size: 2em; color: #fff; }
-#pause-screen p { font-size: 0.8em; line-height: 1.8; max-width: 80%; }
+#pause-screen p { font-size: 0.8em; }
+
+/* NEW: Help Screen Specific Styles */
+#help-screen {
+    z-index: 60;
+    text-align: left;
+    align-items: flex-start;
+}
+#help-screen h2 { font-size: 1.5em; color: var(--safe-color); margin-bottom: 20px; }
+#help-screen p { font-size: 0.75em; line-height: 2; max-width: 90%; }
+#help-screen p strong { color: var(--p1-color); }
 
 /* Buttons */
-.button-container { display: flex; gap: 20px; }
+.button-container { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; }
 button { 
-    margin-top: 30px; padding: 15px 30px; font-family: var(--retro-font); font-size: 1em; background-color: #0d0d1a; color: white; border: 3px solid white; cursor: pointer;
+    padding: 15px 30px; font-family: var(--retro-font); font-size: 1em; background-color: #0d0d1a; color: white; border: 3px solid white; cursor: pointer;
     transition: all 0.2s;
 }
 button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color: var(--safe-color); }
 .hidden { display: none !important; }
+
+/* NEW: Help Button in Corner */
+#help-button-container {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    z-index: 40;
+}
+#toggle-help-button {
+    font-size: 0.7em;
+    padding: 10px 15px;
+    margin: 0;
+    background-color: rgba(0,0,0,0.5);
+    border: 2px solid #aaa;
+    color: #aaa;
+}
+#toggle-help-button:hover {
+    background-color: #fff;
+    color: #000;
+    border-color: #fff;
+}
 
 /* HUD */
 #hud {
@@ -121,10 +156,8 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 .player-hud { text-align: left; }
 #p2-hud { text-align: right; }
 .hud-item { margin-top: 8px; }
-
 #p1-hud { color: var(--p1-color); text-shadow: 0 0 8px var(--p1-color); }
 #p2-hud { color: var(--p2-color); text-shadow: 0 0 8px var(--p2-color); }
-
 #bomb-hud { 
     position: absolute;
     top: 15px;
