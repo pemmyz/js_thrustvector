@@ -6,7 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let lastTime = 0;
         let gameLoopId = null;
 
-        const initialGameState = { 
+        // *** MODIFIED: isSplitScreen is now true by default ***
+        const initialGameState = {
             level: 0,
             players: [],
             bomb: null,
@@ -16,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
             status: 'menu',
             isTwoPlayer: false,
             isDevMode: false,
-            isSplitScreen: false,
+            isSplitScreen: true, // Default to split-screen mode
             scalingMode: 'new', 
         };
 
@@ -29,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         function resetGame() {
-            const persistSplitScreen = state?.isSplitScreen || false;
+            const persistSplitScreen = state?.isSplitScreen ?? true; // Default to true if state doesn't exist yet
             const persistScalingMode = state?.scalingMode || 'new'; 
             
             state = JSON.parse(JSON.stringify(initialGameState));
@@ -258,7 +259,6 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
 
     // --- LEVEL DATA ---
-    // *** MODIFIED: Procedural level configs updated with new sizes and pad counts ***
     const Levels = [
         { name: "Test Level", playerStart: { x: 500, y: 1900 }, bombStart: { x: 500, y: 1500 }, objects: [ { type: 'cave_wall', points: [ {x: 0, y: 2000}, {x: 0, y: 0}, {x: 1000, y: 0}, {x: 1000, y: 2000}, {x: 800, y: 2000}, {x: 800, y: 200}, {x: 200, y: 200}, {x: 200, y: 2000}, {x: 0, y: 2000} ]}, { type: 'cave_wall', points: [ {x: 350, y: 1200}, {x: 650, y: 1200} ]}, { type: 'landing_pad', x: 450, y: 1950, width: 100, height: 10 }, { type: 'landing_pad', x: 450, y: 1150, width: 100, height: 10 }, { type: 'extraction_zone', x: 400, y: 50, width: 200, height: 100 } ] },
         { name: "The Descent", playerStart: { x: 250, y: 300 }, bombStart: { x: 1250, y: 2400 }, objects: [ { type: 'cave_wall', points: [ {x: 0, y: 2500}, {x: 0, y: 250}, {x: 500, y: 250}, {x: 600, y: 350}, {x: 1500, y: 350}, {x: 1600, y: 250}, {x: 2000, y: 250}, {x: 2000, y: 2500}, {x: 0, y: 2500} ]}, { type: 'cave_wall', points: [ {x: 200, y: 500}, {x: 400, y: 650}, {x: 600, y: 600}, {x: 800, y: 900}, {x: 700, y: 1200}, {x: 900, y: 1500}, {x: 1300, y: 1600}, {x: 1600, y: 1400}, {x: 1800, y: 1700}, {x: 1700, y: 2000}, {x: 1400, y: 2200}, {x: 1100, y: 2100}, {x: 800, y: 2300}, {x: 1000, y: 2500}, {x: 1500, y: 2500}, {x: 1700, y: 2300} ]}, { type: 'landing_pad', x: 200, y: 450, width: 100, height: 10 }, { type: 'landing_pad', x: 850, y: 1490, width: 100, height: 10 }, { type: 'landing_pad', x: 1200, y: 2450, width: 100, height: 10 }, { type: 'extraction_zone', x: 1700, y: 300, width: 200, height: 50 } ] },
@@ -295,11 +295,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     let [newX, newY] = newRoom.center;
                     const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; };
                     if (Math.random() < 0.5) {
-                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); }
-                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); }
+                        // Horizontal corridor (5 tiles tall)
+                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) {
+                            carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2);
+                        }
+                        // Vertical corridor (3 tiles wide)
+                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) {
+                            carve(newX - 1, i); carve(newX, i); carve(newX + 1, i);
+                        }
                     } else {
-                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); }
-                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); }
+                        // Vertical corridor (3 tiles wide)
+                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) {
+                             carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i);
+                        }
+                        // Horizontal corridor (5 tiles tall)
+                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) {
+                            carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2);
+                        }
                     }
                 }
                 rooms.push(newRoom);
@@ -322,8 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return objects;
         }
-
-        // *** MODIFIED: Logic to add random landing pads ***
+        
         function generate(name, config) {
             const { mapGrid, rooms } = createMapGrid(config);
             if (rooms.length < 2) { return generate(name, config); }
@@ -340,11 +351,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const bombStart = { x: bombRoom.center[0] * scale, y: (bombRoom.y1 + 1) * scale };
             objects.push({ type: 'landing_pad', x: (bombRoom.center[0] - 1) * scale, y: (bombRoom.y2 - 1) * scale, width: 2 * scale, height: 10 });
             
-            // Add random landing pads
             const numPads = config.numLandingPads || 0;
             const potentialPadRooms = rooms.filter((_, index) => index !== 0 && index !== bombRoomIndex);
             
-            // Shuffle and pick rooms
             for (let i = potentialPadRooms.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [potentialPadRooms[i], potentialPadRooms[j]] = [potentialPadRooms[j], potentialPadRooms[i]];
