@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let lastTime = 0;
         let gameLoopId = null;
 
-        const initialGameState = {
+        const initialGameState = { 
             level: 0,
             players: [],
             bomb: null,
