@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let lastTime = 0;
         let gameLoopId = null;
 
-        // *** MODIFIED: isSplitScreen is now true by default ***
         const initialGameState = {
             level: 0,
             players: [],
@@ -16,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
             camera: { x: 0, y: 0, zoom: 0.4, shake: { duration: 0, magnitude: 0 } },
             status: 'menu',
             isTwoPlayer: false,
-            isDevMode: false,
-            isSplitScreen: true, // Default to split-screen mode
+            devModeState: 0, // 0: off, 1: dev, 2: invulnerable
+            isSplitScreen: true,
             scalingMode: 'new', 
         };
 
@@ -30,13 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         function resetGame() {
-            const persistSplitScreen = state?.isSplitScreen ?? true; // Default to true if state doesn't exist yet
+            const persistSplitScreen = state?.isSplitScreen ?? true;
             const persistScalingMode = state?.scalingMode || 'new'; 
-            
+            const persistDevMode = state?.devModeState || 0;
+
             state = JSON.parse(JSON.stringify(initialGameState));
 
             state.isSplitScreen = persistSplitScreen;
             state.scalingMode = persistScalingMode;
+            state.devModeState = persistDevMode;
             
             UI.hide('dev-mode-hud');
         }
@@ -133,7 +134,28 @@ document.addEventListener('DOMContentLoaded', () => {
         function checkWinFailConditions() { if (state.status !== 'playing') return; if (state.bomb.stability <= 0 && state.status !== 'game_over') { Physics.spawnExplosion(state, state.bomb.x, state.bomb.y, 200); state.camera.shake = { duration: 0.8, magnitude: 20 }; endGame("Bomb Destabilized!"); } const extractionZone = state.levelObjects.find(o => o.type === 'extraction_zone'); if (extractionZone && Physics.isColliding(state.bomb, extractionZone) && state.bomb.attachedShips.length > 0) { state.status = 'level_complete'; UI.showLevelMessage("Success!", 3000, () => { const nextLevel = state.level + 1; if (Levels[nextLevel]) { loadLevel(nextLevel); } else { endGame("All Levels Complete!"); } }); } if (state.players.length > 0 && state.players.every(p => p.health <= 0) && state.status !== 'game_over') { endGame("All Ships Destroyed!"); } }
         function endGame(message) { if (state.status === 'game_over') return; state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); } }
-        function toggleDevMode() { state.isDevMode = !state.isDevMode; if (state.isDevMode) { UI.show('dev-mode-hud'); } else { UI.hide('dev-mode-hud'); } }
+        
+        function cycleDevMode() {
+            state.devModeState = (state.devModeState + 1) % 3;
+            const hud = UI.get('dev-mode-hud');
+            switch (state.devModeState) {
+                case 0: // OFF
+                    UI.hide('dev-mode-hud');
+                    console.log("Dev Mode: OFF");
+                    break;
+                case 1: // Standard Dev
+                    hud.textContent = "DEV MODE";
+                    UI.show('dev-mode-hud');
+                    console.log("Dev Mode: ON (Reduced Damage)");
+                    break;
+                case 2: // Invulnerable
+                    hud.textContent = "DEV MODE (INVULNERABLE)";
+                    UI.show('dev-mode-hud');
+                    console.log("Dev Mode: ON (Invulnerable)");
+                    break;
+            }
+        }
+
         function toggleSplitScreen() { state.isSplitScreen = !state.isSplitScreen; UI.updateSplitScreenButton(state.isSplitScreen); if (state.status === 'playing' && state.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
         
         function toggleScalingMode() {
@@ -142,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.updateScalingButton(state.scalingMode);
         }
 
-        return { init, togglePause, toggleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, getGameState: () => state };
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, getGameState: () => state };
     })();
 
     // --- RENDERER MODULE ---
@@ -188,10 +210,63 @@ document.addEventListener('DOMContentLoaded', () => {
     const Physics = (() => {
         const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, ROPE_LENGTH: 100, ROPE_STIFFNESS: 120, ROPE_DAMPING: 8, WALL_HALF_THICKNESS: 7.5 };
         function update(state, actions, dt) { updateShips(state, actions, dt); updateBomb(state, dt); updateParticles(state, dt); updateCamera(state, dt); }
-        function updateShips(state, actions, dt) { state.players.forEach((ship, index) => { if (ship.health <= 0) return; const action = index === 0 ? actions.p1 : actions.p2; if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; } if (ship.isLanded) { const targetAngle = -Math.PI / 2; ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt); ship.vx *= 0.9; ship.vy = 0; ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * dt); ship.health = Math.min(100, ship.health + C.FUEL_REGEN * dt); return; } if (action.left) ship.angle -= C.ROTATION_SPEED * dt; if (action.right) ship.angle += C.ROTATION_SPEED * dt; ship.isThrusting = action.up && ship.fuel > 0; if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; if (!state.isDevMode) { ship.fuel -= C.FUEL_CONSUMPTION * dt; } if(state.particles.length < 300) spawnThrustParticles(state, ship); } ship.vy += C.GRAVITY * dt; if (state.bomb.attachedShips.includes(ship)) { const bomb = state.bomb; const dx = bomb.x - ship.x; const dy = bomb.y - ship.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist; const ny = dy / dist; const vRelX = bomb.vx - ship.vx; const vRelY = bomb.vy - ship.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; ship.vx += (nx * totalForce / ship.mass) * dt; ship.vy += (ny * totalForce / ship.mass) * dt;} } ship.x += ship.vx * dt; ship.y += ship.vy * dt; handleWallCollisions(ship, state); handleObjectCollisions(ship, state); }); }
+        function updateShips(state, actions, dt) { state.players.forEach((ship, index) => { if (ship.health <= 0) return; const action = index === 0 ? actions.p1 : actions.p2; if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; } if (ship.isLanded) { const targetAngle = -Math.PI / 2; ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt); ship.vx *= 0.9; ship.vy = 0; ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * dt); ship.health = Math.min(100, ship.health + C.FUEL_REGEN * dt); return; } if (action.left) ship.angle -= C.ROTATION_SPEED * dt; if (action.right) ship.angle += C.ROTATION_SPEED * dt; ship.isThrusting = action.up && ship.fuel > 0; if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; if (state.devModeState === 0) { ship.fuel -= C.FUEL_CONSUMPTION * dt; } if(state.particles.length < 300) spawnThrustParticles(state, ship); } ship.vy += C.GRAVITY * dt; if (state.bomb.attachedShips.includes(ship)) { const bomb = state.bomb; const dx = bomb.x - ship.x; const dy = bomb.y - ship.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist; const ny = dy / dist; const vRelX = bomb.vx - ship.vx; const vRelY = bomb.vy - ship.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; ship.vx += (nx * totalForce / ship.mass) * dt; ship.vy += (ny * totalForce / ship.mass) * dt;} } ship.x += ship.vx * dt; ship.y += ship.vy * dt; handleWallCollisions(ship, state); handleObjectCollisions(ship, state); }); }
         function updateBomb(state, dt) { const bomb = state.bomb; if (bomb.onPedestal) return; let forceX = 0, forceY = 0; if (bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { const dx = ship.x - bomb.x, dy = ship.y - bomb.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist, ny = dy / dist; const vRelX = ship.vx - bomb.vx, vRelY = ship.vy - bomb.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalRopeForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; forceX += nx * totalRopeForce; forceY += ny * totalRopeForce; } }); } forceY += C.GRAVITY * bomb.mass; bomb.vx += (forceX / bomb.mass) * dt; bomb.vy += (forceY / bomb.mass) * dt; bomb.vx *= 0.99; bomb.vy *= 0.99; bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt; handleWallCollisions(bomb, state); if (bomb.isArmed) { const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1]; if (!p1 || !p2) return; const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI); bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0; bomb.stability += (bomb.harmony === 1 ? C.BOMB_STABILITY_REGEN : -C.BOMB_STABILITY_DRAIN) * dt; bomb.stability = Math.max(0, Math.min(100, bomb.stability)); } }
         function handleObjectCollisions(ship, state) { let onAPad = false; state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) { ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true; } }); if (!onAPad) { ship.isLanded = false; } const bomb = state.bomb; const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y); const isAttached = bomb.attachedShips.includes(ship); const inRange = distToBomb < C.ROPE_LENGTH + 40; if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); bomb.onPedestal = false; } else if ((!ship.wantsToClamp || !inRange) && isAttached) { const index = bomb.attachedShips.indexOf(ship); if (index > -1) bomb.attachedShips.splice(index, 1); if (!inRange) ship.wantsToClamp = false; } if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); } }
-        function handleWallCollisions(entity, state) { const effectiveRadius = entity.radius + C.WALL_HALF_THICKNESS / state.camera.zoom; state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i + 1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x) ** 2 + (entity.y - closestPoint.y) ** 2; if (distSq < effectiveRadius * effectiveRadius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = effectiveRadius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { const damage = state.isDevMode ? C.DAMAGE_ON_COLLISION * 0.25 : C.DAMAGE_ON_COLLISION; if (entity.health !== undefined) { entity.health -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 5); } else if (entity.stability !== undefined) { entity.stability -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 10); } state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
+        
+        // *** MODIFIED: New invulnerability logic ***
+        function handleWallCollisions(entity, state) {
+            const effectiveRadius = entity.radius + C.WALL_HALF_THICKNESS / state.camera.zoom;
+            state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => {
+                for (let i = 0; i < wall.points.length - 1; i++) {
+                    const p1 = wall.points[i]; const p2 = wall.points[i + 1];
+                    const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y };
+                    const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y;
+                    if (lineLenSq === 0) continue;
+                    const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq));
+                    const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y };
+                    const distSq = (entity.x - closestPoint.x) ** 2 + (entity.y - closestPoint.y) ** 2;
+                    if (distSq < effectiveRadius * effectiveRadius) {
+                        const impactSpeed = Math.hypot(entity.vx, entity.vy);
+                        const dist = Math.sqrt(distSq) || 1;
+                        const penetration = effectiveRadius - dist;
+                        const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist };
+                        entity.x += normal.x * penetration;
+                        entity.y += normal.y * penetration;
+                        const dot = entity.vx * normal.x + entity.vy * normal.y;
+                        entity.vx -= 1.8 * dot * normal.x;
+                        entity.vy -= 1.8 * dot * normal.y;
+                        if (impactSpeed > 50) {
+                            let damage = 0;
+                            if (state.devModeState === 0) { // Normal Mode
+                                damage = C.DAMAGE_ON_COLLISION;
+                                if (entity.health !== undefined) entity.health -= damage;
+                                if (entity.stability !== undefined) entity.stability -= damage;
+                                Physics.spawnExplosion(state, entity.x, entity.y, 5);
+                            } else if (state.devModeState === 1) { // Dev Mode
+                                damage = C.DAMAGE_ON_COLLISION * 0.25;
+                                if (entity.health !== undefined) entity.health -= damage;
+                                if (entity.stability !== undefined) entity.stability -= damage;
+                                Physics.spawnExplosion(state, entity.x, entity.y, 5);
+                            } else if (state.devModeState === 2) { // Invulnerability Mode
+                                damage = C.DAMAGE_ON_COLLISION * 0.01; // Take 1% damage for feedback
+                                if (entity.health !== undefined) {
+                                    entity.health -= damage;
+                                    entity.health = 100; // Instantly restore health
+                                }
+                                if (entity.stability !== undefined) {
+                                    entity.stability -= damage;
+                                    entity.stability = 100; // Instantly restore stability
+                                }
+                                Physics.spawnExplosion(state, entity.x, entity.y, 5);
+                            }
+                            state.camera.shake = { duration: 0.2, magnitude: 5 };
+                        }
+                        return;
+                    }
+                }
+            });
+        }
         function lerpAngle(start, end, amount) { let d = end - start; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; return start + d * amount; }
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
@@ -204,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INPUT MODULE ---
     const Input = (() => {
         const keys = {};
-        function init() { window.addEventListener('keydown', e => { if (!e.repeat) { const state = Game.getGameState(); if (state.status === 'playing' || state.status === 'paused') { if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } } if (e.code === 'KeyP') Game.togglePause(); if (e.code === 'KeyH') UI.toggleHelp(); if (e.code === 'KeyV') Game.toggleDevMode(); } keys[e.code] = true; }); window.addEventListener('keyup', e => { keys[e.code] = false; }); }
+        function init() { window.addEventListener('keydown', e => { if (!e.repeat) { const state = Game.getGameState(); if (state.status === 'playing' || state.status === 'paused') { if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } } if (e.code === 'KeyP') Game.togglePause(); if (e.code === 'KeyH') UI.toggleHelp(); if (e.code === 'KeyV') Game.cycleDevMode(); } keys[e.code] = true; }); window.addEventListener('keyup', e => { keys[e.code] = false; }); }
         function getPlayerActions(state) { const actions = { p1: {}, p2: {} }; if (state.players[0]) { const c1 = state.players[0].controls; actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] }; } if (state.players[1]) { const c2 = state.players[1].controls; actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] }; } else { actions.p2 = { up: keys['ArrowUp'] }; } return actions; }
         return { init, getPlayerActions };
     })();
@@ -295,23 +370,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     let [newX, newY] = newRoom.center;
                     const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; };
                     if (Math.random() < 0.5) {
-                        // Horizontal corridor (5 tiles tall)
-                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) {
-                            carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2);
-                        }
-                        // Vertical corridor (3 tiles wide)
-                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) {
-                            carve(newX - 1, i); carve(newX, i); carve(newX + 1, i);
-                        }
+                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); }
+                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); }
                     } else {
-                        // Vertical corridor (3 tiles wide)
-                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) {
-                             carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i);
-                        }
-                        // Horizontal corridor (5 tiles tall)
-                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) {
-                            carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2);
-                        }
+                        for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); }
+                        for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); }
                     }
                 }
                 rooms.push(newRoom);
