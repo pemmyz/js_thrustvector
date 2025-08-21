@@ -131,7 +131,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        function checkWinFailConditions() { if (state.status !== 'playing') return; if (state.bomb.stability <= 0 && state.status !== 'game_over') { Physics.spawnExplosion(state, state.bomb.x, state.bomb.y, 200); state.camera.shake = { duration: 0.8, magnitude: 20 }; endGame("Bomb Destabilized!"); } const extractionZone = state.levelObjects.find(o => o.type === 'extraction_zone'); if (extractionZone && Physics.isColliding(state.bomb, extractionZone) && state.bomb.attachedShips.length > 0) { state.status = 'level_complete'; UI.showLevelMessage("Success!", 3000, () => { const nextLevel = state.level + 1; if (Levels[nextLevel]) { loadLevel(nextLevel); } else { endGame("All Levels Complete!"); } }); } if (state.players.length > 0 && state.players.every(p => p.health <= 0) && state.status !== 'game_over') { endGame("All Ships Destroyed!"); } }
+        // --- MODIFIED CODE ---
+        function checkWinFailConditions() { 
+            if (state.status !== 'playing') return; 
+            if (state.bomb.stability <= 0 && state.status !== 'game_over') { 
+                Physics.spawnExplosion(state, state.bomb.x, state.bomb.y, 200); 
+                state.camera.shake = { duration: 0.8, magnitude: 20 }; 
+                endGame("Bomb Destabilized!"); 
+            } 
+            const extractionZone = state.levelObjects.find(o => o.type === 'extraction_zone'); 
+            if (extractionZone && Physics.isColliding(state.bomb, extractionZone) && state.bomb.attachedShips.length > 0) { 
+                state.status = 'level_complete'; 
+                UI.showLevelMessage("Success!", 3000, () => { 
+                    // Instead of loading the next level, reload the current one.
+                    // This will regenerate procedural levels and restart static ones.
+                    loadLevel(state.level); 
+                }); 
+            } 
+            if (state.players.length > 0 && state.players.every(p => p.health <= 0) && state.status !== 'game_over') { 
+                endGame("All Ships Destroyed!"); 
+            } 
+        }
+
         function endGame(message) { if (state.status === 'game_over') return; state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); } }
         
