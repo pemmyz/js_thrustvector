@@ -28,18 +28,36 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.populateLevelSelect(Levels); 
         }
         
+        // --- MODIFIED CODE ---
         function resetGame() {
+            // Persist settings across level loads
             const persistSplitScreen = state?.isSplitScreen ?? true;
             const persistScalingMode = state?.scalingMode || 'new'; 
             const persistDevMode = state?.devModeState || 0;
 
+            // Reset game state to its initial configuration
             state = JSON.parse(JSON.stringify(initialGameState));
 
+            // Re-apply the persisted settings
             state.isSplitScreen = persistSplitScreen;
             state.scalingMode = persistScalingMode;
             state.devModeState = persistDevMode;
             
-            UI.hide('dev-mode-hud');
+            // Update the Dev Mode HUD to match the persisted state
+            const hud = UI.get('dev-mode-hud');
+            switch (state.devModeState) {
+                case 0: // OFF
+                    UI.hide('dev-mode-hud');
+                    break;
+                case 1: // Standard Dev
+                    hud.textContent = "DEV MODE";
+                    UI.show('dev-mode-hud');
+                    break;
+                case 2: // Invulnerable
+                    hud.textContent = "DEV MODE (INVULNERABLE)";
+                    UI.show('dev-mode-hud');
+                    break;
+            }
         }
         
         function startGame(levelIndex) {
@@ -131,7 +149,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // --- MODIFIED CODE ---
         function checkWinFailConditions() { 
             if (state.status !== 'playing') return; 
             if (state.bomb.stability <= 0 && state.status !== 'game_over') { 
@@ -143,8 +160,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (extractionZone && Physics.isColliding(state.bomb, extractionZone) && state.bomb.attachedShips.length > 0) { 
                 state.status = 'level_complete'; 
                 UI.showLevelMessage("Success!", 3000, () => { 
-                    // Instead of loading the next level, reload the current one.
-                    // This will regenerate procedural levels and restart static ones.
                     loadLevel(state.level); 
                 }); 
             } 
@@ -235,7 +250,6 @@ document.addEventListener('DOMContentLoaded', () => {
         function updateBomb(state, dt) { const bomb = state.bomb; if (bomb.onPedestal) return; let forceX = 0, forceY = 0; if (bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { const dx = ship.x - bomb.x, dy = ship.y - bomb.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist, ny = dy / dist; const vRelX = ship.vx - bomb.vx, vRelY = ship.vy - bomb.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalRopeForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; forceX += nx * totalRopeForce; forceY += ny * totalRopeForce; } }); } forceY += C.GRAVITY * bomb.mass; bomb.vx += (forceX / bomb.mass) * dt; bomb.vy += (forceY / bomb.mass) * dt; bomb.vx *= 0.99; bomb.vy *= 0.99; bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt; handleWallCollisions(bomb, state); if (bomb.isArmed) { const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1]; if (!p1 || !p2) return; const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI); bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0; bomb.stability += (bomb.harmony === 1 ? C.BOMB_STABILITY_REGEN : -C.BOMB_STABILITY_DRAIN) * dt; bomb.stability = Math.max(0, Math.min(100, bomb.stability)); } }
         function handleObjectCollisions(ship, state) { let onAPad = false; state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) { ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true; } }); if (!onAPad) { ship.isLanded = false; } const bomb = state.bomb; const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y); const isAttached = bomb.attachedShips.includes(ship); const inRange = distToBomb < C.ROPE_LENGTH + 40; if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); bomb.onPedestal = false; } else if ((!ship.wantsToClamp || !inRange) && isAttached) { const index = bomb.attachedShips.indexOf(ship); if (index > -1) bomb.attachedShips.splice(index, 1); if (!inRange) ship.wantsToClamp = false; } if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); } }
         
-        // *** MODIFIED: New invulnerability logic ***
         function handleWallCollisions(entity, state) {
             const effectiveRadius = entity.radius + C.WALL_HALF_THICKNESS / state.camera.zoom;
             state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => {
