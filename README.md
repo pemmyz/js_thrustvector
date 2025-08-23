@@ -7,6 +7,8 @@ Two players must clamp onto a physics-driven bomb with short ropes and carefully
 
 Built with **HTML5 Canvas, CSS3, and vanilla JavaScript** — no external libraries required.  
 
+![screenshot](screenshots/game_1.png)
+
 ---
 
 ## 🎮 Gameplay
