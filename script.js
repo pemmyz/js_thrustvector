@@ -474,8 +474,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (candidates.length > 0) {
                     const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
                     const padHeight = 10;
-                    // *** FINAL CORRECTION: Add another half-thickness offset to clear the wall completely ***
-                    const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - padHeight;
+                    // *** FINAL CORRECTION: Add an additional 5 units of height. ***
+                    const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - padHeight - 5;
                     return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
                 }
                 return null;
@@ -504,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Fallback: if no pad spot was found, create a default one and position bomb above it
                 const fallbackPadX = (bombRoom.center[0] - 1) * scale;
-                const fallbackPadY = (bombRoom.y2 * scale) - 10 - (WALL_HALF_THICKNESS * 2);
+                const fallbackPadY = (bombRoom.y2 * scale) - 10 - (WALL_HALF_THICKNESS * 2) - 5;
                 objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: 10 });
                 const padCenterX = fallbackPadX + scale;
                 bombStart = { x: padCenterX, y: (bombRoom.y1 + 2) * scale };
