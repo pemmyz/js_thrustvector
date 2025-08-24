@@ -440,7 +440,124 @@ document.addEventListener('DOMContentLoaded', () => {
         function createCavernGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(otherRoom => newRoom.intersect(otherRoom))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) mapGrid[i][j] = ' '; } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } if (rooms.length > 0) { const exitRoom = rooms[rooms.length - 1]; mapGrid[exitRoom.center[1]][exitRoom.center[0]] = 'E'; } return { mapGrid, rooms }; }
         function createMazeGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(room => newRoom.intersect(room))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) { mapGrid[i][j] = ' '; } } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } if (rooms.length > 0) { const exitRoom = rooms[rooms.length - 1]; mapGrid[exitRoom.center[1]][exitRoom.center[0]] = 'E'; } return { mapGrid, rooms }; }
         function convertGridToLevelObjects(mapGrid, scale) { const objects = []; const height = mapGrid.length; const width = mapGrid[0].length; const isFloor = (x, y) => (x < 0 || y < 0 || x >= width || y >= height) || mapGrid[y][x] !== '#'; for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) { if (!isFloor(x, y)) { if (isFloor(x, y - 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: (x + 1) * scale, y: y * scale }] }); if (isFloor(x, y + 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: (y + 1) * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); if (isFloor(x - 1, y)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: x * scale, y: (y + 1) * scale }] }); if (isFloor(x + 1, y)) objects.push({ type: 'cave_wall', points: [{ x: (x + 1) * scale, y: y * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); } } } return objects; }
-        function generate(name, config) { let gridData; if (config.generatorType === 'maze') { gridData = createMazeGrid(config); } else { gridData = createCavernGrid(config); } const { mapGrid, rooms } = gridData; if (rooms.length < 2) { return generate(name, config); } const scale = config.scale; let objects = convertGridToLevelObjects(mapGrid, scale); const startRoom = rooms[0]; const playerStart = { x: startRoom.center[0] * scale, y: (startRoom.y2 - 2) * scale }; objects.push({ type: 'landing_pad', x: (startRoom.center[0] - 1) * scale, y: (startRoom.y2 - 1) * scale, width: 2 * scale, height: 10 }); const bombRoomIndex = Math.floor(rooms.length / 2); const bombRoom = rooms[bombRoomIndex]; const bombStart = { x: bombRoom.center[0] * scale, y: (bombRoom.y1 + 1) * scale }; objects.push({ type: 'landing_pad', x: (bombRoom.center[0] - 1) * scale, y: (bombRoom.y2 - 1) * scale, width: 2 * scale, height: 10 }); const numPads = config.numLandingPads || 0; const potentialPadRooms = rooms.filter((_, index) => index !== 0 && index !== bombRoomIndex); for (let i = potentialPadRooms.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [potentialPadRooms[i], potentialPadRooms[j]] = [potentialPadRooms[j], potentialPadRooms[i]]; } for(let i = 0; i < numPads && i < potentialPadRooms.length; i++) { const padRoom = potentialPadRooms[i]; objects.push({ type: 'landing_pad', x: (padRoom.center[0] - 1) * scale, y: (padRoom.y2 - 1) * scale, width: 2 * scale, height: 10 }); } let exitPos = null; for(let y=0; y<mapGrid.length; y++) { const x = mapGrid[y].indexOf('E'); if (x !== -1) { exitPos = {x, y}; break; } } if (exitPos) { objects.push({ type: 'extraction_zone', x: exitPos.x * scale, y: exitPos.y * scale, width: scale, height: scale }); } return { name, playerStart, bombStart, objects, mapGrid, scale, gridWidth: config.width, gridHeight: config.height }; }
+        
+        function generate(name, config) {
+            let gridData;
+            if (config.generatorType === 'maze') {
+                gridData = createMazeGrid(config);
+            } else {
+                gridData = createCavernGrid(config);
+            }
+            const { mapGrid, rooms } = gridData;
+            if (rooms.length < 5) {
+                return generate(name, config);
+            }
+            const scale = config.scale;
+            let objects = convertGridToLevelObjects(mapGrid, scale);
+            const usedPadRooms = new Set();
+            const WALL_HALF_THICKNESS = 7.5; // From physics module, for visual consistency
+
+            const findLandingPadSpot = (room) => {
+                const candidates = [];
+                const floorY = room.y2;
+                const spaceY = room.y2 - 1;
+
+                if (floorY >= config.height || spaceY < 0) return null;
+
+                for (let x = room.x1; x <= room.x2 - 2; x++) {
+                    if (mapGrid[floorY][x] === '#' && mapGrid[floorY][x + 1] === '#' &&
+                        mapGrid[spaceY][x] === ' ' && mapGrid[spaceY][x + 1] === ' ') {
+                        candidates.push(x);
+                    }
+                }
+
+                if (candidates.length > 0) {
+                    const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
+                    const padHeight = 10;
+                    // *** FINAL CORRECTION: Add another half-thickness offset to clear the wall completely ***
+                    const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - padHeight;
+                    return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
+                }
+                return null;
+            };
+
+            // 1. Player Start and guaranteed pad
+            const startRoom = rooms[0];
+            const playerStart = { x: startRoom.center[0] * scale, y: (startRoom.y2 - 2) * scale };
+            let playerPad = findLandingPadSpot(startRoom);
+            if (playerPad) {
+                objects.push(playerPad);
+            }
+            usedPadRooms.add(startRoom);
+
+            // 2. Bomb and its guaranteed pad
+            const bombRoomIndex = Math.floor(rooms.length / 2);
+            const bombRoom = rooms[bombRoomIndex];
+            let bombStart;
+
+            let bombPad = findLandingPadSpot(bombRoom);
+            if (bombPad) {
+                objects.push(bombPad);
+                // Position bomb directly above the center of the pad
+                const padCenterX = bombPad.x + (bombPad.width / 2);
+                bombStart = { x: padCenterX, y: (bombRoom.y1 + 2) * scale };
+            } else {
+                // Fallback: if no pad spot was found, create a default one and position bomb above it
+                const fallbackPadX = (bombRoom.center[0] - 1) * scale;
+                const fallbackPadY = (bombRoom.y2 * scale) - 10 - (WALL_HALF_THICKNESS * 2);
+                objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: 10 });
+                const padCenterX = fallbackPadX + scale;
+                bombStart = { x: padCenterX, y: (bombRoom.y1 + 2) * scale };
+            }
+            usedPadRooms.add(bombRoom);
+
+            // 3. Guaranteed Corner Pads
+            const tl = rooms.reduce((best, room) => (room.x1 + room.y1 < best.x1 + best.y1) ? room : best);
+            const tr = rooms.reduce((best, room) => (room.x2 - room.y1 > best.x2 - best.y1) ? room : best);
+            const bl = rooms.reduce((best, room) => (room.y2 - room.x1 > best.y2 - best.x1) ? room : best);
+            const br = rooms.reduce((best, room) => (room.x2 + room.y2 > best.x2 + best.y2) ? room : best);
+            
+            const cornerRooms = new Set([tl, tr, bl, br]);
+            for (const corner of cornerRooms) {
+                if (!usedPadRooms.has(corner)) {
+                    let cornerPad = findLandingPadSpot(corner);
+                    if (cornerPad) {
+                        objects.push(cornerPad);
+                        usedPadRooms.add(corner);
+                    }
+                }
+            }
+
+            // 4. Other random pads to meet the defined number
+            const numPads = config.numLandingPads || 0;
+            const potentialPadRooms = rooms.filter(room => !usedPadRooms.has(room));
+            for (let i = potentialPadRooms.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [potentialPadRooms[i], potentialPadRooms[j]] = [potentialPadRooms[j], potentialPadRooms[i]];
+            }
+            
+            let placedRandomPads = 0;
+            for (const padRoom of potentialPadRooms) {
+                if (placedRandomPads >= numPads) break;
+                let randomPad = findLandingPadSpot(padRoom);
+                if (randomPad) {
+                    objects.push(randomPad);
+                    placedRandomPads++;
+                }
+            }
+
+            // 5. Extraction zone
+            let exitPos = null;
+            for(let y=0; y<mapGrid.length; y++) {
+                const x = mapGrid[y].indexOf('E');
+                if (x !== -1) { exitPos = {x, y}; break; }
+            }
+            if (exitPos) {
+                objects.push({ type: 'extraction_zone', x: exitPos.x * scale, y: exitPos.y * scale, width: scale, height: scale });
+            }
+            return { name, playerStart, bombStart, objects, mapGrid, scale, gridWidth: config.width, gridHeight: config.height };
+        }
+
         function gridifyStaticLevel(levelData, gridSize) { let maxX = 0, maxY = 0; levelData.objects.forEach(o => { if (o.points) o.points.forEach(p => { maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });}); const scale = Math.max(maxX, maxY) / (gridSize - 1); const mapGrid = Array.from({ length: gridSize }, () => Array(gridSize).fill(' ')); levelData.objects.forEach(obj => { if (obj.type === 'cave_wall') { for (let i = 0; i < obj.points.length - 1; i++) { const p1 = obj.points[i]; const p2 = obj.points[i+1]; const gx1 = Math.round(p1.x / scale); const gy1 = Math.round(p1.y / scale); const gx2 = Math.round(p2.x / scale); const gy2 = Math.round(p2.y / scale); let x0=gx1,y0=gy1,x1=gx2,y1=gy2; const dx=Math.abs(x1-x0),sx=x0<x1?1:-1; const dy=-Math.abs(y1-y0),sy=y0<y1?1:-1; let err=dx+dy,e2; while(true){ if(x0>=0&&x0<gridSize&&y0>=0&&y0<gridSize) mapGrid[y0][x0]='#'; if(x0===x1&&y0===y1)break; e2=2*err; if(e2>=dy){err+=dy;x0+=sx;} if(e2<=dx){err+=dx;y0+=sy;}}}}}); for(let y=1; y<gridSize-1; y++){for(let x=1; x<gridSize-1; x++){if(mapGrid[y][x]===' '&&(mapGrid[y-1][x]==='#'||mapGrid[y+1][x]==='#'||mapGrid[y][x-1]==='#'||mapGrid[y][x+1]==='#')){}else{ if(mapGrid[y-1]&&mapGrid[y-1][x-1]===' '&&mapGrid[y-1][x]===' '&&mapGrid[y-1][x+1]===' '&&mapGrid[y][x-1]===' '&&mapGrid[y][x+1]===' '&&mapGrid[y+1]&&mapGrid[y+1][x-1]===' '&&mapGrid[y+1][x]===' '&&mapGrid[y+1][x+1]===' '){}else{mapGrid[y][x]='#';}}}} return { ...levelData, mapGrid, scale, gridWidth: gridSize, gridHeight: gridSize };}
         return { generate, gridifyStaticLevel };
     })();
