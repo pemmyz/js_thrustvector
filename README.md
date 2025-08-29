@@ -2,6 +2,8 @@
 
 # 🚀 js_thrustvector (Co-op)
 
+## Play it now: https://pemmyz.github.io/js_thrustvector/
+
 A retro-styled **JavaScript browser game** inspired by *Thrust*, with a cooperative twist.  
 Two players must clamp onto a physics-driven bomb with short ropes and carefully fly it together through winding caverns to the extraction zone.  
 
