@@ -38,17 +38,24 @@ Work together to **retrieve the bomb** from deep within the caves and carry it s
   - Cave walls damage ships.  
   - Hard crashes shake the camera and risk destruction.  
 - **Landing Pads** (green): Repair damage and refuel ships.  
+- **Fog of War**: Caverns are dark until explored. Each ship gradually uncovers the map.  
+- **Minimap + Pathfinding**: A minimap shows explored terrain and objectives. Optional pathfinding hints guide players to the bomb and extraction zone.  
 
 ---
 
 ## 🕹️ Features
 
-- Co-op **two-player shared-screen or split-screen mode**  
+- Co-op **two-player shared-screen or split-screen mode** (toggle in menu)  
+- **Procedural random caverns & mazes** with multiple scaling modes  
 - Physics-based bomb ropes and stability mechanics  
 - Procedurally shaky **harmony/stability HUD**  
-- **Dev Mode**: Toggle with `[V]` → Infinite fuel + 75% damage reduction  
+- **Dev Mode** (cycle with `[V]`):  
+  - Mode 0 → OFF  
+  - Mode 1 → Infinite fuel + 75% reduced damage  
+  - Mode 2 → Invulnerable  
 - Pause anytime with `[P]`  
 - In-game help menu with `[H]`  
+- Dynamic **minimap with fog-of-war** and pathfinding assistance  
 
 ---
 
@@ -66,7 +73,3 @@ Work together to **retrieve the bomb** from deep within the caves and carry it s
 
 MIT License  
 Free to use, modify, and share.  
-
-
-
-
