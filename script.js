@@ -274,7 +274,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.translate(width * 0.75, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p2.x, -p2.y);
                 drawWorld(state);
                 ctx.restore();
-                drawMinimap(ctx, state, p2, { x: width - 210, y: 10, w: 200, h: 150 });
+                // *** MODIFIED: Changed P2 minimap coordinates ***
+                drawMinimap(ctx, state, p2, { x: width / 2 + 10, y: 10, w: 200, h: 150 });
 
                 // Split line
                 ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
