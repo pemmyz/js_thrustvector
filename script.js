@@ -44,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state = JSON.parse(JSON.stringify(initialGameState));
 
+            UI.hide('bomb-hud'); // Explicitly hide the bomb HUD on reset.
+
             state.isSplitScreen = persistSplitScreen;
             state.scalingMode = persistScalingMode;
             state.devModeState = persistDevMode;
@@ -304,15 +306,12 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.rect(rect.x, rect.y, rect.w, rect.h);
             ctx.clip();
             
-            // --- START OF MODIFICATION ---
             // Instead of a fixed square view, we calculate the view's aspect ratio
             // to match the rectangle it's being drawn in.
-            
             const baseViewSizeY = 30; // Define how many cells are visible vertically.
             const cellSize = rect.h / baseViewSizeY; // Calculate cell size based ONLY on height.
             const viewSizeX = rect.w / cellSize; // Calculate how many cells will fit horizontally.
             const viewSizeY = baseViewSizeY;     // Keep this name for clarity in the loops below.
-            // --- END OF MODIFICATION ---
 
             const pGridX = player.x / state.gridScale;
             const pGridY = player.y / state.gridScale;
@@ -321,7 +320,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
 
             // Draw map cells
-            // --- MODIFIED: Use viewSizeX and viewSizeY for the loop boundaries ---
             for (let y = Math.floor(pGridY - viewSizeY / 2); y < pGridY + viewSizeY / 2; y++) {
                 for (let x = Math.floor(pGridX - viewSizeX / 2); x < pGridX + viewSizeX / 2; x++) {
                     if (x >= 0 && x < state.gridWidth && y >= 0 && y < state.gridHeight && state.discoveredGrid[y][x]) {
@@ -482,7 +480,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (candidates.length > 0) {
                     const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
                     const padHeight = 10;
-                    // *** FINAL CORRECTION: Add an additional 5 units of height. ***
                     const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - padHeight - 5;
                     return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
                 }
