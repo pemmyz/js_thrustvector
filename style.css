@@ -168,7 +168,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 #p2-hud { color: var(--p2-color); text-shadow: 0 0 8px var(--p2-color); }
 #bomb-hud { 
     position: absolute;
-    top: 15px;
+    top: 630px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
