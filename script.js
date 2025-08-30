@@ -274,7 +274,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.translate(width * 0.75, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p2.x, -p2.y);
                 drawWorld(state);
                 ctx.restore();
-                // *** MODIFIED: Changed P2 minimap coordinates ***
                 drawMinimap(ctx, state, p2, { x: width / 2 + 10, y: 10, w: 200, h: 150 });
 
                 // Split line
@@ -300,14 +299,21 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
             ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-            // --- MODIFICATION: Apply clipping region ---
-            // After this point, nothing will be drawn outside the minimap's rectangle.
+            // Apply clipping region so nothing draws outside the minimap's rectangle.
             ctx.beginPath();
             ctx.rect(rect.x, rect.y, rect.w, rect.h);
             ctx.clip();
             
-            const viewSize = 30;
-            const cellSize = Math.min(rect.w / viewSize, rect.h / viewSize);
+            // --- START OF MODIFICATION ---
+            // Instead of a fixed square view, we calculate the view's aspect ratio
+            // to match the rectangle it's being drawn in.
+            
+            const baseViewSizeY = 30; // Define how many cells are visible vertically.
+            const cellSize = rect.h / baseViewSizeY; // Calculate cell size based ONLY on height.
+            const viewSizeX = rect.w / cellSize; // Calculate how many cells will fit horizontally.
+            const viewSizeY = baseViewSizeY;     // Keep this name for clarity in the loops below.
+            // --- END OF MODIFICATION ---
+
             const pGridX = player.x / state.gridScale;
             const pGridY = player.y / state.gridScale;
 
@@ -315,8 +321,9 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
 
             // Draw map cells
-            for (let y = Math.floor(pGridY - viewSize / 2); y < pGridY + viewSize / 2; y++) {
-                for (let x = Math.floor(pGridX - viewSize / 2); x < pGridX + viewSize / 2; x++) {
+            // --- MODIFIED: Use viewSizeX and viewSizeY for the loop boundaries ---
+            for (let y = Math.floor(pGridY - viewSizeY / 2); y < pGridY + viewSizeY / 2; y++) {
+                for (let x = Math.floor(pGridX - viewSizeX / 2); x < pGridX + viewSizeX / 2; x++) {
                     if (x >= 0 && x < state.gridWidth && y >= 0 && y < state.gridHeight && state.discoveredGrid[y][x]) {
                         const cellType = state.mapGrid[y][x];
                         if (cellType === '#') ctx.fillStyle = '#444';
