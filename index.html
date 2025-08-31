@@ -42,7 +42,6 @@
                 <div id="level-select-container" class="button-container">
                     <!-- Level buttons will be added here by JS -->
                 </div>
-                <!-- NEW: Button container for settings -->
                 <div id="settings-container" class="button-container">
                     <!-- Settings buttons will be added here by JS -->
                 </div>
@@ -66,14 +65,34 @@
 
             <!-- Help Screen Overlay -->
             <div id="help-screen" class="hidden">
-                <h2>How to Play</h2>
-                <p><strong>Objective:</strong> Work together to carry the bomb from the cavern to the green extraction zone at the surface.</p>
-                <p><strong>P1 Controls:</strong> [A]/[D] to Rotate, [W] to Thrust, [S] to Clamp.</p>
-                <p><strong>P2 Controls:</strong> [←]/[→] to Rotate, [↑] to Thrust, [↓] to Clamp.</p>
-                <p><strong>General:</strong> [P] to Pause, [M] for Map, [H] for Help.</p>
-                <p><strong>Harmony:</strong> Both ships must clamp the bomb to lift it. Fly smoothly and match your partner's angle to keep the bomb stable. Poor harmony or hard impacts will cause it to explode!</p>
-                <p><strong>Hazards:</strong> Colliding with cave walls will damage your ship. Landing on green pads will repair and refuel you.</p>
-                <p><strong>Dev Mode [V]:</strong> Toggle infinite fuel and 75% damage reduction.</p>
+                <div> <!-- Wrapper for content -->
+                    <h2>How to Play</h2>
+                    <p><strong>Objective:</strong> Work together to carry the bomb to the green extraction zone.</p>
+                    <p><strong>Gamepad:</strong> D-Pad/Left Stick to Rotate, [A] Button/Right Trigger to Thrust, D-Pad Down to Clamp.</p>
+                    <p><strong>General:</strong> [P] to Pause, [M] for Map, [H] for Help, [V] for Dev Mode.</p>
+                    <p><strong>Harmony:</strong> Both ships must clamp the bomb to lift it. Fly smoothly and match your partner's angle to keep the bomb stable. Poor harmony or hard impacts will cause it to explode!</p>
+                    <p><strong>Hazards:</strong> Colliding with cave walls will damage your ship. Landing on green pads will repair and refuel you.</p>
+
+                    <div id="rebinding-ui">
+                        <h3>Controls Rebinding (Keyboard)</h3>
+                        <div class="rebind-grid">
+                            <div class="rebind-player-col">
+                                <h4>Player 1</h4>
+                                <div class="rebind-row"><span>Thrust:</span> <button class="rebind-button" data-player="0" data-action="up">KeyW</button></div>
+                                <div class="rebind-row"><span>Rotate Left:</span> <button class="rebind-button" data-player="0" data-action="left">KeyA</button></div>
+                                <div class="rebind-row"><span>Rotate Right:</span> <button class="rebind-button" data-player="0" data-action="right">KeyD</button></div>
+                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="0" data-action="clamp">KeyS</button></div>
+                            </div>
+                            <div class="rebind-player-col">
+                                <h4>Player 2</h4>
+                                <div class="rebind-row"><span>Thrust:</span> <button class="rebind-button" data-player="1" data-action="up">ArrowUp</button></div>
+                                <div class="rebind-row"><span>Rotate Left:</span> <button class="rebind-button" data-player="1" data-action="left">ArrowLeft</button></div>
+                                <div class="rebind-row"><span>Rotate Right:</span> <button class="rebind-button" data-player="1" data-action="right">ArrowRight</button></div>
+                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="1" data-action="clamp">ArrowDown</button></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <button id="close-help-button">Close</button>
             </div>
         </div>

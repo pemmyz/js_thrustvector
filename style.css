@@ -113,11 +113,86 @@ body {
 #help-screen {
     z-index: 60;
     text-align: left;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.9em;
+    padding: 2em;
+}
+#help-screen > div {
+    overflow-y: auto;
+    max-height: 90%;
+    padding-right: 1em;
 }
 #help-screen h2 { font-size: 1.5em; color: var(--safe-color); margin-bottom: 20px; }
-#help-screen p { font-size: 0.75em; line-height: 2; max-width: 90%; }
+#help-screen p { font-size: 0.8em; line-height: 1.8; max-width: 95%; margin-bottom: 1em; }
 #help-screen p strong { color: var(--p1-color); }
+#close-help-button {
+    margin-top: 20px;
+    align-self: center;
+}
+
+/* Rebinding UI Styles */
+#rebinding-ui {
+    margin-top: 30px;
+    border-top: 2px dashed #555;
+    padding-top: 15px;
+}
+#rebinding-ui h3 {
+    font-size: 1.1em;
+    color: var(--safe-color);
+    margin-bottom: 20px;
+    text-align: center;
+}
+.rebind-grid {
+    display: flex;
+    justify-content: space-around;
+    gap: 30px;
+}
+.rebind-player-col h4 {
+    font-size: 0.9em;
+    margin-bottom: 15px;
+    color: var(--p1-color);
+}
+.rebind-player-col:last-of-type h4 {
+    color: var(--p2-color);
+}
+.rebind-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 20px;
+    font-size: 0.8em;
+}
+.rebind-button {
+    font-family: var(--retro-font);
+    font-size: 0.7em;
+    min-width: 120px;
+    text-align: center;
+    padding: 8px 12px;
+    border-width: 2px;
+    color: #ccc;
+    border-color: #777;
+    background-color: #222;
+}
+.rebind-button:hover {
+    color: #000;
+    background-color: var(--p1-color);
+    border-color: var(--p1-color);
+}
+.rebind-button.is-listening {
+    color: #000;
+    background-color: var(--safe-color);
+    border-color: #fff;
+    box-shadow: 0 0 15px var(--safe-color);
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 10px var(--safe-color); }
+    50% { box-shadow: 0 0 20px var(--safe-color); }
+    100% { box-shadow: 0 0 10px var(--safe-color); }
+}
 
 /* Buttons */
 .button-container { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; }
@@ -128,7 +203,7 @@ button {
 button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color: var(--safe-color); }
 .hidden { display: none !important; }
 
-/* NEW: Settings container for mode toggle */
+/* Settings container for mode toggle */
 #settings-container {
     margin-top: 30px;
     padding-top: 20px;

@@ -26,9 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
             extractionZoneDiscovered: false,
             p1_path: [],
             p2_path: [],
-            // --- NEW: State for full map view ---
             isMapOpen: false,
-            mapView: { x: 0, y: 0 }
+            mapView: { x: 0, y: 0 },
+            playerControls: [
+                { up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'KeyS' },
+                { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ArrowDown' }
+            ]
         };
 
         function init() {
@@ -43,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const persistSplitScreen = state?.isSplitScreen ?? true;
             const persistScalingMode = state?.scalingMode || 'new';
             const persistDevMode = state?.devModeState || 0;
+            const persistControls = state?.playerControls || initialGameState.playerControls;
 
             state = JSON.parse(JSON.stringify(initialGameState));
 
@@ -51,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isSplitScreen = persistSplitScreen;
             state.scalingMode = persistScalingMode;
             state.devModeState = persistDevMode;
+            state.playerControls = persistControls;
 
             const hud = UI.get('dev-mode-hud');
             switch (state.devModeState) {
@@ -99,9 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.levelObjects = levelData.objects.map(o => ({ ...o }));
 
             const p1Start = levelData.playerStart;
-            state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', {
-                up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'KeyS'
-            });
+            state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', state.playerControls[0]);
 
             if (state.isSplitScreen) { addPlayer2(true); }
 
@@ -125,9 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isTwoPlayer = true;
             const p1 = state.players[0];
             const p2Start = {x: p1.x + 80, y: p1.y};
-            state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', {
-                 up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ArrowDown'
-            });
+            state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', state.playerControls[1]);
             UI.show('p2-hud');
             if (!silent) console.log("Player 2 has joined!");
         }
@@ -258,7 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
         function toggleScalingMode() { state.scalingMode = state.scalingMode === 'new' ? 'original' : 'new'; console.log(`Random Map Scaling Mode: ${state.scalingMode}`); UI.updateScalingButton(state.scalingMode); }
         function toggleMap() { if (state.status !== 'playing' && state.status !== 'paused') return; state.isMapOpen = !state.isMapOpen; if (state.isMapOpen) { UI.show('map-screen'); } else { UI.hide('map-screen'); } }
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, getGameState: () => state };
+        function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, rebindKey, getGameState: () => state };
     })();
 
     // --- RENDERER MODULE ---
@@ -477,8 +479,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = {};
         let isDraggingMap = false;
         let lastMousePos = { x: 0, y: 0 };
+        const gamepads = {};
+        const prevButtonStates = [{}, {}];
+        let rebindingCallback = null;
+
         function init(canvas) { 
             window.addEventListener('keydown', e => { 
+                if (rebindingCallback) {
+                    e.preventDefault();
+                    if (e.code === 'Escape') {
+                        rebindingCallback(null); // Signal cancellation
+                    } else {
+                        rebindingCallback(e.code); // Send back the new key
+                    }
+                    rebindingCallback = null;
+                    return;
+                }
+
                 if (!e.repeat) { 
                     const state = Game.getGameState(); 
                     if (state.status === 'playing' || state.status === 'paused') { 
@@ -494,41 +511,95 @@ document.addEventListener('DOMContentLoaded', () => {
             }); 
             window.addEventListener('keyup', e => { keys[e.code] = false; }); 
             
-            canvas.addEventListener('mousedown', e => {
-                if (Game.getGameState().isMapOpen) {
-                    isDraggingMap = true;
-                    lastMousePos = { x: e.clientX, y: e.clientY };
-                }
-            });
-            window.addEventListener('mousemove', e => {
-                if (Game.getGameState().isMapOpen && isDraggingMap) {
-                    const dx = e.clientX - lastMousePos.x;
-                    const dy = e.clientY - lastMousePos.y;
-                    Game.panMap(dx, dy);
-                    lastMousePos = { x: e.clientX, y: e.clientY };
-                }
-            });
+            canvas.addEventListener('mousedown', e => { if (Game.getGameState().isMapOpen) { isDraggingMap = true; lastMousePos = { x: e.clientX, y: e.clientY }; } });
+            window.addEventListener('mousemove', e => { if (Game.getGameState().isMapOpen && isDraggingMap) { const dx = e.clientX - lastMousePos.x; const dy = e.clientY - lastMousePos.y; Game.panMap(dx, dy); lastMousePos = { x: e.clientX, y: e.clientY }; } });
             window.addEventListener('mouseup', () => { isDraggingMap = false; });
+
+            window.addEventListener("gamepadconnected", e => { console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`); gamepads[e.gamepad.index] = e.gamepad; });
+            window.addEventListener("gamepaddisconnected", e => { console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`); delete gamepads[e.gamepad.index]; });
         }
-        function getPlayerActions(state) { const actions = { p1: {}, p2: {} }; if (state.players[0]) { const c1 = state.players[0].controls; actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] }; } if (state.players[1]) { const c2 = state.players[1].controls; actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] }; } else { actions.p2 = { up: keys['ArrowUp'] }; } return actions; }
-        return { init, getPlayerActions };
+
+        function getPlayerActions(state) {
+            const actions = { p1: {}, p2: {} };
+            const DEADZONE = 0.2;
+            const THRUST_BUTTON_INDEX = 0;   // 'A' on Xbox, 'X' on PS
+            const CLAMP_BUTTON_INDEX = 13;   // D-Pad Down
+            const DPAD_LEFT_INDEX = 14;
+            const DPAD_RIGHT_INDEX = 15;
+            const ALT_THRUST_BUTTON_INDEX = 7; // Right Trigger
+
+            const polledPads = navigator.getGamepads();
+
+            // --- Player 1 ---
+            if (state.players[0]) {
+                const c1 = state.players[0].controls;
+                actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] };
+
+                const pad1 = polledPads[0];
+                if (pad1) {
+                    const stickX = pad1.axes[0];
+                    if (stickX < -DEADZONE || pad1.buttons[DPAD_LEFT_INDEX].pressed) actions.p1.left = true;
+                    if (stickX > DEADZONE || pad1.buttons[DPAD_RIGHT_INDEX].pressed) actions.p1.right = true;
+                    if (pad1.buttons[THRUST_BUTTON_INDEX].pressed || pad1.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p1.up = true;
+                    
+                    const clampPressed = pad1.buttons[CLAMP_BUTTON_INDEX].pressed;
+                    if (clampPressed && !prevButtonStates[0][CLAMP_BUTTON_INDEX]) {
+                        state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
+                    }
+                    prevButtonStates[0][CLAMP_BUTTON_INDEX] = clampPressed;
+                }
+            }
+
+            // --- Player 2 ---
+            if (state.players[1]) {
+                 const c2 = state.players[1].controls;
+                 actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
+
+                 const pad2 = polledPads[1];
+                 if (pad2) {
+                     const stickX = pad2.axes[0];
+                     if (stickX < -DEADZONE || pad2.buttons[DPAD_LEFT_INDEX].pressed) actions.p2.left = true;
+                     if (stickX > DEADZONE || pad2.buttons[DPAD_RIGHT_INDEX].pressed) actions.p2.right = true;
+                     if (pad2.buttons[THRUST_BUTTON_INDEX].pressed || pad2.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p2.up = true;
+                     
+                     const clampPressed = pad2.buttons[CLAMP_BUTTON_INDEX].pressed;
+                     if (clampPressed && !prevButtonStates[1][CLAMP_BUTTON_INDEX]) {
+                         state.players[1].wantsToClamp = !state.players[1].wantsToClamp;
+                     }
+                     prevButtonStates[1][CLAMP_BUTTON_INDEX] = clampPressed;
+                 }
+            } else {
+                actions.p2 = { up: keys[Game.getGameState().playerControls[1].up] };
+                const pad2 = polledPads[1];
+                if (pad2 && (pad2.buttons[THRUST_BUTTON_INDEX].pressed || pad2.buttons[ALT_THRUST_BUTTON_INDEX].pressed)) {
+                    actions.p2.up = true;
+                }
+            }
+            
+            return actions;
+        }
+
+        function listenForNextKey(callback) { rebindingCallback = callback; }
+        return { init, getPlayerActions, listenForNextKey };
     })();
 
     // --- UI MODULE ---
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); }
+        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); elements['rebinding-ui'].addEventListener('click', handleRebindClick); populateRebindingUI(); }
         function get(id) { return elements[id]; }
         function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
         function show(id) { elements[id].classList.remove('hidden'); }
         function hide(id) { elements[id].classList.add('hidden'); }
         function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
-        function populateLevelSelect(levels) { const levelContainer = elements['level-select-container']; const settingsContainer = elements['settings-container']; levelContainer.innerHTML = ''; settingsContainer.innerHTML = ''; levels.forEach((level, index) => { const button = document.createElement('button'); button.textContent = level.name; button.addEventListener('click', () => Game.startGame(index)); levelContainer.appendChild(button); }); const splitScreenButton = document.createElement('button'); splitScreenButton.id = 'toggle-split-screen-button'; splitScreenButton.addEventListener('click', () => Game.toggleSplitScreen()); settingsContainer.appendChild(splitScreenButton); updateSplitScreenButton(Game.getGameState().isSplitScreen); const scalingButton = document.createElement('button'); scalingButton.id = 'toggle-scaling-button'; scalingButton.addEventListener('click', () => Game.toggleScalingMode()); settingsContainer.appendChild(scalingButton); updateScalingButton(Game.getGameState().scalingMode); }
+        function populateLevelSelect(levels) { const levelContainer = elements['level-select-container']; const settingsContainer = elements['settings-container']; levelContainer.innerHTML = ''; settingsContainer.innerHTML = ''; levels.forEach((level, index) => { const button = document.createElement('button'); button.textContent = level.name; button.addEventListener('click', () => Game.startGame(index)); levelContainer.appendChild(button); }); const splitScreenButton = document.createElement('button'); splitScreenButton.id = 'toggle-split-screen-button'; splitScreenButton.addEventListener('click', () => Game.toggleSplitScreen()); settingsContainer.appendChild(splitScreenButton); updateSplitScreenButton(Game.getGameState().isSplitScreen); const scalingButton = document.createElement('button'); scalingButton.id = 'toggle-scaling-button'; scalingButton.addEventListener('click', () => Game.toggleScalingMode()); settingsContainer.appendChild(scalingButton); updateScalingButton(Game.getGameState().scalingMode); populateRebindingUI(); }
         function updateSplitScreenButton(isSplitScreen) { const button = document.getElementById('toggle-split-screen-button'); if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; } }
         function updateScalingButton(scalingMode) { const button = document.getElementById('toggle-scaling-button'); if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; } }
-        function toggleHelp() { const helpScreen = elements['help-screen']; const isHidden = helpScreen.classList.contains('hidden'); if (isHidden) { const gameState = Game.getGameState(); if (gameState.status === 'playing') { Game.togglePause(true); } show('help-screen'); } else { hide('help-screen'); } }
+        function toggleHelp() { const helpScreen = elements['help-screen']; const isHidden = helpScreen.classList.contains('hidden'); if (isHidden) { populateRebindingUI(); const gameState = Game.getGameState(); if (gameState.status === 'playing') { Game.togglePause(true); } show('help-screen'); } else { hide('help-screen'); } }
+        function populateRebindingUI() { const controls = Game.getGameState().playerControls; if (!controls) return; const buttons = elements['rebinding-ui'].querySelectorAll('.rebind-button'); buttons.forEach(button => { const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; if (controls[player] && controls[player][action]) { button.textContent = controls[player][action]; } }); }
+        function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
         return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton };
     })();
 
