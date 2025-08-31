@@ -31,7 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
             playerControls: [
                 { up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'KeyS' },
                 { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ArrowDown' }
-            ]
+            ],
+            gamepadAssignments: [-1, -1] // Player 1 and 2 gamepad indices. -1 = keyboard/unassigned.
         };
 
         function init() {
@@ -40,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
             Input.init(canvas);
             resetGame();
             UI.populateLevelSelect(Levels);
+            // Start the game loop immediately to listen for controllers on the menu
+            gameLoop(performance.now());
         }
 
         function resetGame() {
@@ -49,7 +52,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const persistControls = state?.playerControls || initialGameState.playerControls;
 
             state = JSON.parse(JSON.stringify(initialGameState));
-
+            
+            // Reset assignments on new game/level load
+            state.gamepadAssignments = [-1, -1];
+            UI.updatePlayerName(0, -1);
+            UI.updatePlayerName(1, -1);
+            UI.hide('p2-hud');
+            
             UI.hide('bomb-hud'); // Explicitly hide the bomb HUD on reset.
 
             state.isSplitScreen = persistSplitScreen;
@@ -71,7 +80,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function loadLevel(levelIndex) {
+            const oldAssignments = state.gamepadAssignments; // Persist assignments across levels
             resetGame();
+            state.gamepadAssignments = oldAssignments;
+            UI.updatePlayerName(0, state.gamepadAssignments[0]);
 
             state.level = levelIndex;
             const levelTemplate = Levels[levelIndex];
@@ -106,7 +118,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const p1Start = levelData.playerStart;
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', state.playerControls[0]);
 
-            if (state.isSplitScreen) { addPlayer2(true); }
+            // Add player 2 if they were joined from the menu or are hot-joining
+            if (state.isSplitScreen || state.gamepadAssignments[1] !== -1) { 
+                 addPlayer2(true); 
+            }
 
             const bombStart = levelData.bombStart;
             state.bomb = createBomb(bombStart.x, bombStart.y);
@@ -118,19 +133,41 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.showLevelMessage(levelData.name, 2000, () => {
                 state.status = 'playing';
                 lastTime = performance.now();
-                if (gameLoopId) cancelAnimationFrame(gameLoopId);
-                gameLoop(lastTime);
             });
         }
 
         function addPlayer2(silent = false) {
             if (state.isTwoPlayer && !silent) return;
             state.isTwoPlayer = true;
+            
+            // Handle adding P2 even if P1 doesn't exist yet (e.g. during level load)
             const p1 = state.players[0];
-            const p2Start = {x: p1.x + 80, y: p1.y};
+            const p1Start = Levels[state.level].playerStart || { x: 500, y: 1900 };
+            const p2Start = {x: p1 ? p1.x + 80 : p1Start.x + 80, y: p1 ? p1.y : p1Start.y};
+
             state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', state.playerControls[1]);
             UI.show('p2-hud');
+            UI.updatePlayerName(1, state.gamepadAssignments[1]);
             if (!silent) console.log("Player 2 has joined!");
+        }
+        
+        function assignGamepad(playerIndex, gamepadIndex) {
+            if (playerIndex < 0 || playerIndex > 1) return;
+        
+            // Unassign this gamepad if it was assigned to the other player
+            const otherPlayer = 1 - playerIndex;
+            if (state.gamepadAssignments[otherPlayer] === gamepadIndex) {
+                state.gamepadAssignments[otherPlayer] = -1;
+                UI.updatePlayerName(otherPlayer, -1);
+            }
+            
+            state.gamepadAssignments[playerIndex] = gamepadIndex;
+            // Add Player 2 to the game if they just joined with a controller
+            if (playerIndex === 1 && !state.isTwoPlayer && state.status === 'playing') {
+                addPlayer2();
+            }
+            UI.updatePlayerName(playerIndex, gamepadIndex);
+            console.log(`Gamepad ${gamepadIndex} assigned to Player ${playerIndex + 1}`);
         }
 
         function createShip(id, x, y, color, glowColor, controls) {
@@ -143,7 +180,16 @@ document.addEventListener('DOMContentLoaded', () => {
             gameLoopId = requestAnimationFrame(gameLoop);
             const deltaTime = Math.min(0.05, (timestamp - lastTime) / 1000);
             lastTime = timestamp;
+
+            // Always poll for new controllers, regardless of game state
+            Input.pollForNewControllers(state);
             
+            if (state.status === 'menu') {
+                Input.handleMenuInput(state); // Handle keyboard join
+                Renderer.draw(state); // Keep drawing background on menu
+                return;
+            }
+
             if (state.isMapOpen) {
                 Renderer.drawFullMap(state);
                 return; // Skip game logic and normal rendering when map is open
@@ -157,7 +203,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (state.status === 'playing') {
                 const actions = Input.getPlayerActions(state);
-                if (!state.isSplitScreen && !state.isTwoPlayer && actions.p2.up) addPlayer2();
                 Physics.update(state, actions, deltaTime);
                 updateDiscoveryAndPathfinding(state, timestamp);
                 Renderer.draw(state);
@@ -255,12 +300,12 @@ document.addEventListener('DOMContentLoaded', () => {
         function endGame(message) { if (state.status === 'game_over') return; state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); } }
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
-        function toggleSplitScreen() { state.isSplitScreen = !state.isSplitScreen; UI.updateSplitScreenButton(state.isSplitScreen); if (state.status === 'playing' && state.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
+        function toggleSplitScreen() { state.isSplitScreen = !state.isSplitScreen; UI.updateSplitScreenButton(state.isSplitScreen); if (state.status !== 'playing' && state.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
         function toggleScalingMode() { state.scalingMode = state.scalingMode === 'new' ? 'original' : 'new'; console.log(`Random Map Scaling Mode: ${state.scalingMode}`); UI.updateScalingButton(state.scalingMode); }
         function toggleMap() { if (state.status !== 'playing' && state.status !== 'paused') return; state.isMapOpen = !state.isMapOpen; if (state.isMapOpen) { UI.show('map-screen'); } else { UI.hide('map-screen'); } }
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
         function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, rebindKey, getGameState: () => state };
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, assignGamepad, getGameState: () => state };
     })();
 
     // --- RENDERER MODULE ---
@@ -275,6 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         function draw(state) {
             ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#050508'; ctx.fillRect(0, 0, width, height);
+            if (state.status === 'menu') return; // Don't draw game objects on menu
             const p1 = state.players[0]; const p2 = state.players[1];
             if (state.isSplitScreen && state.isTwoPlayer && p1 && p2) {
                 // P1 View
@@ -293,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Split line
                 ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
-            } else {
+            } else if (p1) {
                 ctx.save(); ctx.translate(width / 2, height / 2);
                 if (state.camera.shake.duration > 0) { const { magnitude } = state.camera.shake; ctx.translate(Math.random() * magnitude - magnitude/2, Math.random() * magnitude - magnitude/2); }
                 ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-state.camera.x, -state.camera.y);
@@ -304,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         function drawMinimap(ctx, state, player, rect) {
-            if (!state.mapGrid || state.mapGrid.length === 0) return;
+            if (!state.mapGrid || state.mapGrid.length === 0 || !player) return;
             
             ctx.save();
             ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
@@ -480,8 +526,9 @@ document.addEventListener('DOMContentLoaded', () => {
         let isDraggingMap = false;
         let lastMousePos = { x: 0, y: 0 };
         const gamepads = {};
-        const prevButtonStates = [{}, {}];
+        const prevButtonStates = [{}, {}, {}, {}]; // Support up to 4 gamepads
         let rebindingCallback = null;
+        const FACE_BUTTON_INDICES = [0, 1, 2, 3]; // A, B, X, Y on standard layouts
 
         function init(canvas) { 
             window.addEventListener('keydown', e => { 
@@ -516,7 +563,70 @@ document.addEventListener('DOMContentLoaded', () => {
             window.addEventListener('mouseup', () => { isDraggingMap = false; });
 
             window.addEventListener("gamepadconnected", e => { console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`); gamepads[e.gamepad.index] = e.gamepad; });
-            window.addEventListener("gamepaddisconnected", e => { console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`); delete gamepads[e.gamepad.index]; });
+            window.addEventListener("gamepaddisconnected", e => {
+                console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`);
+                const state = Game.getGameState();
+                const playerIndex = state.gamepadAssignments.indexOf(e.gamepad.index);
+                if (playerIndex !== -1) {
+                    state.gamepadAssignments[playerIndex] = -1;
+                    UI.updatePlayerName(playerIndex, -1);
+                    console.log(`Player ${playerIndex + 1} unassigned from controller.`);
+                }
+                delete gamepads[e.gamepad.index];
+            });
+        }
+        
+        // Universal controller polling function for hot-joining
+        function pollForNewControllers(state) {
+            const polledPads = navigator.getGamepads();
+
+            for (let i = 0; i < polledPads.length; i++) {
+                const pad = polledPads[i];
+                if (!pad) continue;
+
+                // Check if this pad is already assigned
+                if (state.gamepadAssignments.includes(pad.index)) {
+                    // Still need to update its button states for other logic (like clamp)
+                    pad.buttons.forEach((button, index) => {
+                         prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
+                         prevButtonStates[pad.index][index] = button.pressed;
+                    });
+                    continue;
+                }
+
+                // Check for a new face button press to join
+                let justPressedJoin = false;
+                for (const buttonIndex of FACE_BUTTON_INDICES) {
+                    const button = pad.buttons[buttonIndex];
+                    if (button) {
+                        prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
+                        const wasPressed = prevButtonStates[pad.index][buttonIndex] || false;
+                        if (button.pressed && !wasPressed) {
+                            justPressedJoin = true;
+                        }
+                        prevButtonStates[pad.index][buttonIndex] = button.pressed;
+                    }
+                }
+                
+                if (justPressedJoin) {
+                    if (state.gamepadAssignments[0] === -1) {
+                        Game.assignGamepad(0, pad.index);
+                    } else if (state.gamepadAssignments[1] === -1) {
+                        Game.assignGamepad(1, pad.index);
+                    }
+                }
+            }
+        }
+        
+        // Simplified menu input, as controller joining is now global
+        function handleMenuInput(state) {
+             // Keyboard Join for P2
+             if (!state.isTwoPlayer && keys[state.playerControls[1].up]) {
+                if (state.gamepadAssignments[1] === -1) { // Only join if P2 slot is free
+                    Game.addPlayer2();
+                    UI.updatePlayerName(1, -1); // Explicitly keyboard
+                }
+            }
         }
 
         function getPlayerActions(state) {
@@ -532,62 +642,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // --- Player 1 ---
             if (state.players[0]) {
-                const c1 = state.players[0].controls;
+                const c1 = state.playerControls[0];
                 actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] };
 
-                const pad1 = polledPads[0];
-                if (pad1) {
+                const pad1_index = state.gamepadAssignments[0];
+                if (pad1_index !== -1 && polledPads[pad1_index]) {
+                    const pad1 = polledPads[pad1_index];
                     const stickX = pad1.axes[0];
                     if (stickX < -DEADZONE || pad1.buttons[DPAD_LEFT_INDEX].pressed) actions.p1.left = true;
                     if (stickX > DEADZONE || pad1.buttons[DPAD_RIGHT_INDEX].pressed) actions.p1.right = true;
                     if (pad1.buttons[THRUST_BUTTON_INDEX].pressed || pad1.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p1.up = true;
                     
                     const clampPressed = pad1.buttons[CLAMP_BUTTON_INDEX].pressed;
-                    if (clampPressed && !prevButtonStates[0][CLAMP_BUTTON_INDEX]) {
+                    if (clampPressed && !prevButtonStates[pad1_index][CLAMP_BUTTON_INDEX]) {
                         state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
                     }
-                    prevButtonStates[0][CLAMP_BUTTON_INDEX] = clampPressed;
                 }
             }
 
             // --- Player 2 ---
             if (state.players[1]) {
-                 const c2 = state.players[1].controls;
+                 const c2 = state.playerControls[1];
                  actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
 
-                 const pad2 = polledPads[1];
-                 if (pad2) {
+                 const pad2_index = state.gamepadAssignments[1];
+                 if (pad2_index !== -1 && polledPads[pad2_index]) {
+                     const pad2 = polledPads[pad2_index];
                      const stickX = pad2.axes[0];
                      if (stickX < -DEADZONE || pad2.buttons[DPAD_LEFT_INDEX].pressed) actions.p2.left = true;
                      if (stickX > DEADZONE || pad2.buttons[DPAD_RIGHT_INDEX].pressed) actions.p2.right = true;
                      if (pad2.buttons[THRUST_BUTTON_INDEX].pressed || pad2.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p2.up = true;
                      
                      const clampPressed = pad2.buttons[CLAMP_BUTTON_INDEX].pressed;
-                     if (clampPressed && !prevButtonStates[1][CLAMP_BUTTON_INDEX]) {
+                     if (clampPressed && !prevButtonStates[pad2_index][CLAMP_BUTTON_INDEX]) {
                          state.players[1].wantsToClamp = !state.players[1].wantsToClamp;
                      }
-                     prevButtonStates[1][CLAMP_BUTTON_INDEX] = clampPressed;
                  }
-            } else {
-                actions.p2 = { up: keys[Game.getGameState().playerControls[1].up] };
-                const pad2 = polledPads[1];
-                if (pad2 && (pad2.buttons[THRUST_BUTTON_INDEX].pressed || pad2.buttons[ALT_THRUST_BUTTON_INDEX].pressed)) {
-                    actions.p2.up = true;
-                }
             }
             
             return actions;
         }
 
         function listenForNextKey(callback) { rebindingCallback = callback; }
-        return { init, getPlayerActions, listenForNextKey };
+        return { init, getPlayerActions, listenForNextKey, handleMenuInput, pollForNewControllers };
     })();
 
     // --- UI MODULE ---
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); elements['rebinding-ui'].addEventListener('click', handleRebindClick); populateRebindingUI(); }
+        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); elements['rebinding-ui'].addEventListener('click', handleRebindClick); populateRebindingUI(); }
         function get(id) { return elements[id]; }
         function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
@@ -598,9 +702,21 @@ document.addEventListener('DOMContentLoaded', () => {
         function updateSplitScreenButton(isSplitScreen) { const button = document.getElementById('toggle-split-screen-button'); if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; } }
         function updateScalingButton(scalingMode) { const button = document.getElementById('toggle-scaling-button'); if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; } }
         function toggleHelp() { const helpScreen = elements['help-screen']; const isHidden = helpScreen.classList.contains('hidden'); if (isHidden) { populateRebindingUI(); const gameState = Game.getGameState(); if (gameState.status === 'playing') { Game.togglePause(true); } show('help-screen'); } else { hide('help-screen'); } }
+        function updatePlayerName(playerIndex, gamepadIndex) {
+            const id = `p${playerIndex + 1}-name`;
+            const element = elements[id];
+            if (!element) return;
+            
+            let nameText = `P${playerIndex + 1}`;
+            if (gamepadIndex !== -1) {
+                nameText += ` (GP${gamepadIndex})`;
+            }
+            nameText += ' 🚀';
+            element.textContent = nameText;
+        }
         function populateRebindingUI() { const controls = Game.getGameState().playerControls; if (!controls) return; const buttons = elements['rebinding-ui'].querySelectorAll('.rebind-button'); buttons.forEach(button => { const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; if (controls[player] && controls[player][action]) { button.textContent = controls[player][action]; } }); }
         function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
-        return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton };
+        return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton, updatePlayerName };
     })();
 
     // --- LEVEL DATA ---
