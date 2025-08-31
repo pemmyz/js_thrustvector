@@ -68,7 +68,7 @@ body {
 }
 
 /* Overlays */
-#message-screen, #level-message-screen, #pause-screen, #help-screen {
+#message-screen, #level-message-screen, #pause-screen, #help-screen, #map-screen {
     position: absolute;
     top: 1.5em;
     left: 1.5em;
@@ -86,7 +86,7 @@ body {
     box-sizing: border-box;
 }
 
-#message-screen.hidden, #level-message-screen.hidden, #pause-screen.hidden, #help-screen.hidden {
+#message-screen.hidden, #level-message-screen.hidden, #pause-screen.hidden, #help-screen.hidden, #map-screen.hidden {
     opacity: 0;
     pointer-events: none;
 }
@@ -97,6 +97,17 @@ body {
 #level-message-screen { font-size: 2.5em; color: var(--safe-color); text-shadow: 3px 3px 0 #000; }
 #pause-screen h2 { font-size: 2em; color: #fff; }
 #pause-screen p { font-size: 0.8em; }
+
+/* Map Screen Specific Styles */
+#map-screen {
+    justify-content: flex-start;
+    padding-top: 2em;
+    background-color: rgba(0, 0, 0, 0); /* Transparent background */
+    pointer-events: none; /* Let clicks/drags pass through to the canvas */
+}
+#map-screen h2, #map-screen p {
+    text-shadow: 2px 2px 4px #000;
+}
 
 /* Help Screen Specific Styles */
 #help-screen {
@@ -182,7 +193,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 /* Dev Mode HUD Style */
 #dev-mode-hud {
     position: absolute;
-    top: 700px;  /* <--- THIS IS THE LINE TO CHANGE */
+    top: 700px;
     left: 50%;
     transform: translateX(-50%);
     color: var(--p2-color);

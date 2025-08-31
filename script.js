@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
             devModeState: 0,
             isSplitScreen: true,
             scalingMode: 'new',
-            // --- NEW: State for pathfinding and fog of war ---
             mapGrid: [],
             discoveredGrid: [],
             gridScale: 1,
@@ -27,12 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
             extractionZoneDiscovered: false,
             p1_path: [],
             p2_path: [],
+            // --- NEW: State for full map view ---
+            isMapOpen: false,
+            mapView: { x: 0, y: 0 }
         };
 
         function init() {
             UI.init();
-            Input.init();
-            Renderer.init();
+            const canvas = Renderer.init();
+            Input.init(canvas);
             resetGame();
             UI.populateLevelSelect(Levels);
         }
@@ -87,7 +89,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 cameraZoom = 0.4;
             }
 
-            // --- Initialize map and discovery state ---
             state.mapGrid = levelData.mapGrid;
             state.gridScale = levelData.scale;
             state.gridWidth = levelData.gridWidth;
@@ -109,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.camera.x = p1Start.x;
             state.camera.y = p1Start.y;
             state.camera.zoom = cameraZoom;
+            state.mapView = { x: p1Start.x, y: p1Start.y }; // Center map on start
 
             UI.showLevelMessage(levelData.name, 2000, () => {
                 state.status = 'playing';
@@ -138,9 +140,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function gameLoop(timestamp) {
             gameLoopId = requestAnimationFrame(gameLoop);
-            if (state.status === 'paused') { lastTime = timestamp; Renderer.drawPauseOverlay(); return; }
             const deltaTime = Math.min(0.05, (timestamp - lastTime) / 1000);
             lastTime = timestamp;
+            
+            if (state.isMapOpen) {
+                Renderer.drawFullMap(state);
+                return; // Skip game logic and normal rendering when map is open
+            }
+
+            if (state.status === 'paused') { 
+                lastTime = timestamp; 
+                Renderer.drawPauseOverlay(); 
+                return; 
+            }
+
             if (state.status === 'playing') {
                 const actions = Input.getPlayerActions(state);
                 if (!state.isSplitScreen && !state.isTwoPlayer && actions.p2.up) addPlayer2();
@@ -173,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            // Check for discovery of objectives
             const discoveryRadius = 12;
             if (!state.bombDiscovered) {
                 const bombPos = worldToGrid(state.bomb.x, state.bomb.y);
@@ -192,8 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-
-            // Pathfinding (throttled to 2 times per second)
             if (timestamp - lastPathfindTime > 500) {
                 lastPathfindTime = timestamp;
                 let targetPos = null;
@@ -204,7 +214,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (state.bombDiscovered) {
                     targetPos = worldToGrid(state.bomb.x, state.bomb.y);
                 }
-
                 state.players.forEach((player, index) => {
                     if (targetPos) {
                         const startPos = worldToGrid(player.x, player.y);
@@ -247,13 +256,15 @@ document.addEventListener('DOMContentLoaded', () => {
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
         function toggleSplitScreen() { state.isSplitScreen = !state.isSplitScreen; UI.updateSplitScreenButton(state.isSplitScreen); if (state.status === 'playing' && state.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
         function toggleScalingMode() { state.scalingMode = state.scalingMode === 'new' ? 'original' : 'new'; console.log(`Random Map Scaling Mode: ${state.scalingMode}`); UI.updateScalingButton(state.scalingMode); }
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, getGameState: () => state };
+        function toggleMap() { if (state.status !== 'playing' && state.status !== 'paused') return; state.isMapOpen = !state.isMapOpen; if (state.isMapOpen) { UI.show('map-screen'); } else { UI.hide('map-screen'); } }
+        function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, getGameState: () => state };
     })();
 
     // --- RENDERER MODULE ---
     const Renderer = (() => {
         let canvas, ctx, width, height;
-        function init() { canvas = document.getElementById('game-canvas'); ctx = canvas.getContext('2d'); resize(); window.addEventListener('resize', resize); }
+        function init() { canvas = document.getElementById('game-canvas'); ctx = canvas.getContext('2d'); resize(); window.addEventListener('resize', resize); return canvas; }
         function resize() { const rect = canvas.getBoundingClientRect(); canvas.width = rect.width; canvas.height = rect.height; width = canvas.width; height = canvas.height; }
         function drawWorld(state) {
             drawLevel(state); drawParticles(state.particles);
@@ -293,33 +304,26 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawMinimap(ctx, state, player, rect) {
             if (!state.mapGrid || state.mapGrid.length === 0) return;
             
-            ctx.save(); // Save the full canvas state
-
-            // Draw background and border
+            ctx.save();
             ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
             ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
             ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
             ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-            // Apply clipping region so nothing draws outside the minimap's rectangle.
             ctx.beginPath();
             ctx.rect(rect.x, rect.y, rect.w, rect.h);
             ctx.clip();
             
-            // Instead of a fixed square view, we calculate the view's aspect ratio
-            // to match the rectangle it's being drawn in.
-            const baseViewSizeY = 30; // Define how many cells are visible vertically.
-            const cellSize = rect.h / baseViewSizeY; // Calculate cell size based ONLY on height.
-            const viewSizeX = rect.w / cellSize; // Calculate how many cells will fit horizontally.
-            const viewSizeY = baseViewSizeY;     // Keep this name for clarity in the loops below.
+            const baseViewSizeY = 30;
+            const cellSize = rect.h / baseViewSizeY;
+            const viewSizeX = rect.w / cellSize;
+            const viewSizeY = baseViewSizeY;
 
             const pGridX = player.x / state.gridScale;
             const pGridY = player.y / state.gridScale;
 
-            // Translate coordinate system to be centered on the player for drawing map content
             ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
 
-            // Draw map cells
             for (let y = Math.floor(pGridY - viewSizeY / 2); y < pGridY + viewSizeY / 2; y++) {
                 for (let x = Math.floor(pGridX - viewSizeX / 2); x < pGridX + viewSizeX / 2; x++) {
                     if (x >= 0 && x < state.gridWidth && y >= 0 && y < state.gridHeight && state.discoveredGrid[y][x]) {
@@ -327,13 +331,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (cellType === '#') ctx.fillStyle = '#444';
                         else if (cellType === ' ') ctx.fillStyle = '#111';
                         else ctx.fillStyle = '#222';
-
                         ctx.fillRect( (x - pGridX) * cellSize - cellSize / 2, (y - pGridY) * cellSize - cellSize / 2, cellSize, cellSize );
                     }
                 }
             }
-
-            // Draw path
             const path = player.id === 0 ? state.p1_path : state.p2_path;
             if (path.length > 0) {
                 ctx.strokeStyle = 'cyan';
@@ -347,8 +348,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 ctx.stroke();
             }
-
-            // Draw discovered objectives
             if (state.bombDiscovered) {
                 const bGridX = state.bomb.x / state.gridScale;
                 const bGridY = state.bomb.y / state.gridScale;
@@ -364,8 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     ctx.fillRect((zGridX - pGridX) * cellSize - cellSize, (zGridY - pGridY) * cellSize - cellSize, cellSize * 2, cellSize * 2);
                 }
             }
-            
-            // Draw players
             state.players.forEach(p => {
                 const relX = (p.x / state.gridScale - pGridX) * cellSize;
                 const relY = (p.y / state.gridScale - pGridY) * cellSize;
@@ -374,8 +371,80 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.arc(relX, relY, cellSize * 0.7, 0, Math.PI * 2);
                 ctx.fill();
             });
+            ctx.restore();
+        }
 
-            ctx.restore(); // Restore the canvas state, removing the clip and translation
+        function drawFullMap(state) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, width, height);
+
+            const cellSize = 8;
+            const scaleFactor = cellSize / state.gridScale;
+            const viewX = state.mapView.x;
+            const viewY = state.mapView.y;
+            
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+
+            // Draw map grid
+            const worldWidthOnScreen = width / scaleFactor;
+            const worldHeightOnScreen = height / scaleFactor;
+            const startGridX = Math.floor((viewX - worldWidthOnScreen / 2) / state.gridScale);
+            const endGridX = Math.ceil((viewX + worldWidthOnScreen / 2) / state.gridScale);
+            const startGridY = Math.floor((viewY - worldHeightOnScreen / 2) / state.gridScale);
+            const endGridY = Math.ceil((viewY + worldHeightOnScreen / 2) / state.gridScale);
+
+            for (let y = startGridY; y < endGridY; y++) {
+                for (let x = startGridX; x < endGridX; x++) {
+                    if (x >= 0 && x < state.gridWidth && y >= 0 && y < state.gridHeight && state.discoveredGrid[y][x]) {
+                        const cellType = state.mapGrid[y][x];
+                        if (cellType === '#') ctx.fillStyle = '#556677';
+                        else if (cellType === ' ') ctx.fillStyle = '#1a1a2a';
+                        else ctx.fillStyle = '#222'; // should not happen often
+                        
+                        const screenX = (x * state.gridScale - viewX) * scaleFactor;
+                        const screenY = (y * state.gridScale - viewY) * scaleFactor;
+                        ctx.fillRect(screenX, screenY, cellSize, cellSize);
+                    }
+                }
+            }
+
+            // Draw discovered objectives
+            if (state.bombDiscovered) {
+                const screenX = (state.bomb.x - viewX) * scaleFactor;
+                const screenY = (state.bomb.y - viewY) * scaleFactor;
+                ctx.fillStyle = '#ff4757';
+                ctx.shadowColor = '#ff4757';
+                ctx.shadowBlur = 15;
+                ctx.fillRect(screenX - cellSize, screenY - cellSize, cellSize * 2, cellSize * 2);
+            }
+            if (state.extractionZoneDiscovered) {
+                const zone = state.levelObjects.find(o => o.type === 'extraction_zone');
+                if (zone) {
+                    const zx = zone.x + zone.width / 2;
+                    const zy = zone.y + zone.height / 2;
+                    const screenX = (zx - viewX) * scaleFactor;
+                    const screenY = (zy - viewY) * scaleFactor;
+                    ctx.fillStyle = '#7cfc00';
+                    ctx.shadowColor = '#7cfc00';
+                    ctx.shadowBlur = 15;
+                    ctx.fillRect(screenX - cellSize, screenY - cellSize, cellSize * 2, cellSize * 2);
+                }
+            }
+            ctx.shadowBlur = 0;
+
+            // Draw players
+            state.players.forEach(p => {
+                if(p.health <= 0) return;
+                const screenX = (p.x - viewX) * scaleFactor;
+                const screenY = (p.y - viewY) * scaleFactor;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, cellSize, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.restore();
         }
 
         function drawPauseOverlay(){ ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,width,height); }
@@ -383,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawShip(ship, zoom) { if (ship.health <= 0) return; ctx.save(); ctx.translate(ship.x, ship.y); ctx.rotate(ship.angle + Math.PI / 2); ctx.shadowColor = ship.glowColor; ctx.shadowBlur = 20 / zoom; ctx.fillStyle = ship.color; ctx.beginPath(); ctx.moveTo(0, -ship.radius * 0.8); ctx.lineTo(-ship.radius * 0.6, ship.radius * 0.6); ctx.lineTo(ship.radius * 0.6, ship.radius * 0.6); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.restore(); }
         function drawBomb(bomb, zoom) { ctx.save(); ctx.translate(bomb.x, bomb.y); if(bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ship.x - bomb.x, ship.y - bomb.y); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4 / zoom; ctx.stroke(); }); } ctx.shadowColor = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.shadowBlur = (100 - bomb.stability) / 5 / zoom; ctx.beginPath(); ctx.arc(0, 0, bomb.radius, 0, Math.PI * 2); ctx.fillStyle = '#666'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.8, 0, Math.PI * 2); ctx.fillStyle = '#444'; ctx.fill(); const blinkRate = bomb.isArmed ? 0.5 : 1.5; if (Math.floor(performance.now() / (500 / blinkRate)) % 2 === 0) { ctx.fillStyle = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.3, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; ctx.restore(); }
         function drawParticles(particles) { ctx.globalCompositeOperation = 'lighter'; particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0; ctx.globalCompositeOperation = 'source-over'; }
-        return { init, draw, drawPauseOverlay };
+        return { init, draw, drawPauseOverlay, drawFullMap };
     })();
 
     // --- PHYSICS MODULE (EULER INTEGRATION) ---
@@ -406,7 +475,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- INPUT MODULE ---
     const Input = (() => {
         const keys = {};
-        function init() { window.addEventListener('keydown', e => { if (!e.repeat) { const state = Game.getGameState(); if (state.status === 'playing' || state.status === 'paused') { if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } } if (e.code === 'KeyP') Game.togglePause(); if (e.code === 'KeyH') UI.toggleHelp(); if (e.code === 'KeyV') Game.cycleDevMode(); } keys[e.code] = true; }); window.addEventListener('keyup', e => { keys[e.code] = false; }); }
+        let isDraggingMap = false;
+        let lastMousePos = { x: 0, y: 0 };
+        function init(canvas) { 
+            window.addEventListener('keydown', e => { 
+                if (!e.repeat) { 
+                    const state = Game.getGameState(); 
+                    if (state.status === 'playing' || state.status === 'paused') { 
+                        if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } 
+                        if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } 
+                    } 
+                    if (e.code === 'KeyP' && !Game.getGameState().isMapOpen) Game.togglePause(); 
+                    if (e.code === 'KeyH') UI.toggleHelp(); 
+                    if (e.code === 'KeyV') Game.cycleDevMode(); 
+                    if (e.code === 'KeyM') Game.toggleMap();
+                } 
+                keys[e.code] = true; 
+            }); 
+            window.addEventListener('keyup', e => { keys[e.code] = false; }); 
+            
+            canvas.addEventListener('mousedown', e => {
+                if (Game.getGameState().isMapOpen) {
+                    isDraggingMap = true;
+                    lastMousePos = { x: e.clientX, y: e.clientY };
+                }
+            });
+            window.addEventListener('mousemove', e => {
+                if (Game.getGameState().isMapOpen && isDraggingMap) {
+                    const dx = e.clientX - lastMousePos.x;
+                    const dy = e.clientY - lastMousePos.y;
+                    Game.panMap(dx, dy);
+                    lastMousePos = { x: e.clientX, y: e.clientY };
+                }
+            });
+            window.addEventListener('mouseup', () => { isDraggingMap = false; });
+        }
         function getPlayerActions(state) { const actions = { p1: {}, p2: {} }; if (state.players[0]) { const c1 = state.players[0].controls; actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] }; } if (state.players[1]) { const c2 = state.players[1].controls; actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] }; } else { actions.p2 = { up: keys['ArrowUp'] }; } return actions; }
         return { init, getPlayerActions };
     })();
@@ -415,7 +518,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); }
+        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); }
         function get(id) { return elements[id]; }
         function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
