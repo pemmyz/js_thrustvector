@@ -100,7 +100,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 levelData = LevelGenerator.generate(levelTemplate.name, config);
                 cameraZoom = config.zoom;
             } else {
-                levelData = levelTemplate;
+                // Make a deep copy so we can modify it without affecting the original level data
+                levelData = JSON.parse(JSON.stringify(levelTemplate));
+
+                // --- MODIFICATION FOR TEST LEVEL ---
+                if (levelData.name === "Test Level") {
+                    const mainWall = levelData.objects.find(o => o.type === 'cave_wall' && o.points.length > 2);
+                    if (mainWall) {
+                        const p = mainWall.points;
+                        // Randomly choose which wall segment to remove
+                        if (Math.random() < 0.5) {
+                            // Option 1: Delete "left side most bottom horizontal wall" (segment between p7 and p8)
+                            // This creates an opening on the very bottom-left floor.
+                            console.log("Test Level Mod: Deleting bottom-left horizontal wall.");
+                            mainWall.points = [p[8], p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]];
+                        } else {
+                            // Option 2: Delete "left bottom horizontal wall", interpreted as the inner-left vertical wall (segment between p6 and p7)
+                            // This creates an opening between the left spawn corridor and the main cavern.
+                            console.log("Test Level Mod: Deleting inner-left vertical wall.");
+                             mainWall.points = [p[7], p[8], p[0], p[1], p[2], p[3], p[4], p[5], p[6]];
+                        }
+                    }
+                }
+                // --- END MODIFICATION ---
+
                 // For non-procedural levels, create a grid representation.
                 levelData = LevelGenerator.gridifyStaticLevel(levelData, 100);
                 cameraZoom = 0.4;
