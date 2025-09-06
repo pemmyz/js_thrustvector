@@ -110,15 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         const p = mainWall.points;
                         // Randomly choose which wall segment to remove
                         if (Math.random() < 0.5) {
-                            // Option 1: Delete "left side most bottom horizontal wall" (segment between p7 and p8)
-                            // This creates an opening on the very bottom-left floor.
-                            console.log("Test Level Mod: Deleting bottom-left horizontal wall.");
-                            mainWall.points = [p[8], p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]];
+                            // Option 1: Remove the most left side bottom horizontal piece.
+                            // This is the segment between p[7]{x:200,y:2000} and p[8]{x:0,y:2000}.
+                            // To remove the final closing segment of a path, we simply remove the last point.
+                            console.log("Test Level Mod: Removing left bottom horizontal wall.");
+                            mainWall.points.pop(); 
                         } else {
-                            // Option 2: Delete "left bottom horizontal wall", interpreted as the inner-left vertical wall (segment between p6 and p7)
-                            // This creates an opening between the left spawn corridor and the main cavern.
-                            console.log("Test Level Mod: Deleting inner-left vertical wall.");
-                             mainWall.points = [p[7], p[8], p[0], p[1], p[2], p[3], p[4], p[5], p[6]];
+                            // Option 2: Remove the most right side bottom horizontal piece.
+                            // This is the segment between p[3]{x:1000,y:2000} and p[4]{x:800,y:2000}.
+                            // We reorder the points array so this segment becomes the "gap" at the end of the drawing sequence.
+                            console.log("Test Level Mod: Removing right bottom horizontal wall.");
+                            mainWall.points = [p[4], p[5], p[6], p[7], p[8], p[0], p[1], p[2], p[3]];
                         }
                     }
                 }
