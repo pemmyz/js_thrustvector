@@ -19,15 +19,24 @@ Built with **HTML5 Canvas, CSS3, and vanilla JavaScript** — no external librar
 Work together to **retrieve the bomb** from deep within the caves and carry it safely to the green extraction zone at the surface.  
 
 ### Controls
+
 **Player 1 (P1 🚀)**  
 - `A` / `D` → Rotate  
 - `W` → Thrust  
-- `S` → Clamp / Release  
+- `S` → Clamp / Release (toggle)
 
 **Player 2 (P2 🚀)**  
 - `←` / `→` → Rotate  
 - `↑` → Thrust  
-- `↓` → Clamp / Release  
+- `↓` → Clamp / Release (toggle)
+
+**🎮 Gamepad (for the assigned controller of each player)**  
+- **Rotate:** Left Stick (← / →) **or** D-Pad Left / Right  
+- **Thrust:** `A` (Xbox) / `X` (PlayStation) **or** Right Trigger (`RT` / `R2`)  
+- **Clamp / Release:** D-Pad **Down** (toggle)
+
+<sub>Tip: Press **any face button** (`A/B/X/Y` on Xbox, `✕/○/□/△` on PlayStation) to **join/assign** a connected gamepad to P1 or P2. Keyboard and gamepad inputs can be mixed.</sub>
+
 
 ### Mechanics
 - **Harmony Meter**: Both ships must clamp onto the bomb to lift it.  
