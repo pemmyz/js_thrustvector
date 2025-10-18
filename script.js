@@ -165,10 +165,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.isTwoPlayer && !silent) return;
             state.isTwoPlayer = true;
             
-            // Handle adding P2 even if P1 doesn't exist yet (e.g. during level load)
             const p1 = state.players[0];
             const p1Start = Levels[state.level].playerStart || { x: 500, y: 1900 };
-            const p2Start = {x: p1 ? p1.x + 80 : p1Start.x + 80, y: p1 ? p1.y : p1Start.y};
+
+            // Player ship has a radius of 20, so its diameter is 40.
+            // To touch, their centers should be separated by one diameter.
+            const shipRadius = 20;
+            const shipDiameter = shipRadius * 2;
+            const totalSeparation = shipDiameter; // 40
+
+            const p2Start = {x: p1 ? p1.x + totalSeparation : p1Start.x + totalSeparation, y: p1 ? p1.y : p1Start.y};
 
             state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', state.playerControls[1]);
             UI.show('p2-hud');
@@ -837,14 +843,26 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bombRoom === exitRoom || !bombRoom || !exitRoom) { return generate(name, config); }
 
             // 3. Place player, bomb, exit, and pads
-            const playerStart = { x: startRoom.center[0] * scale, y: (startRoom.y2 - 2) * scale };
+            let playerStart;
             let playerPad = findLandingPadSpot(startRoom);
-            if (playerPad) { objects.push(playerPad); } 
-            else {
+            if (!playerPad) {
+                // If no good spot found, create a fallback pad
                 const fallbackPadX = (startRoom.center[0] - 1) * scale;
                 const fallbackPadY = (startRoom.y2 * scale) - 10 - (WALL_HALF_THICKNESS * 2) - 5;
-                objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: 10 });
+                playerPad = { type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: 10 };
             }
+
+            const spawnCenterX = playerPad.x + playerPad.width / 2;
+            const spawnY = playerPad.y - 40;
+            const shipRadius = 20;
+
+            // playerStart is P1's starting position, just left of the center.
+            playerStart = {
+                x: spawnCenterX - shipRadius,
+                y: spawnY
+            };
+
+            objects.push(playerPad);
             usedPadRooms.add(startRoom);
 
             let bombStart;
