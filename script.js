@@ -801,7 +801,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (candidates.length > 0) {
                     const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
                     const padHeight = 10;
-                    const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - padHeight - 5;
+                    // Move the pad up by its own height
+                    const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - (padHeight * 2) - 5; 
                     return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
                 }
                 return null;
@@ -848,8 +849,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!playerPad) {
                 // If no good spot found, create a fallback pad
                 const fallbackPadX = (startRoom.center[0] - 1) * scale;
-                const fallbackPadY = (startRoom.y2 * scale) - 10 - (WALL_HALF_THICKNESS * 2) - 5;
-                playerPad = { type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: 10 };
+                const padHeight = 10;
+                const fallbackPadY = (startRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
+                playerPad = { type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight };
             }
 
             const spawnCenterX = playerPad.x + playerPad.width / 2;
@@ -872,8 +874,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 bombStart = { x: bombPad.x + (bombPad.width / 2), y: (bombRoom.y1 + 2) * scale };
             } else {
                 const fallbackPadX = (bombRoom.center[0] - 1) * scale;
-                const fallbackPadY = (bombRoom.y2 * scale) - 10 - (WALL_HALF_THICKNESS * 2) - 5;
-                objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: 10 });
+                const padHeight = 10;
+                const fallbackPadY = (bombRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
+                objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight });
                 bombStart = { x: fallbackPadX + scale, y: (bombRoom.y1 + 2) * scale };
             }
             usedPadRooms.add(bombRoom);
