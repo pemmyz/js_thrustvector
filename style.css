@@ -217,8 +217,10 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     bottom: 10px;
     left: 10px;
     z-index: 40;
+    display: flex;
+    gap: 10px;
 }
-#toggle-help-button {
+#toggle-help-button, #mute-button {
     font-size: 0.7em;
     padding: 10px 15px;
     margin: 0;
@@ -226,7 +228,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     border: 2px solid #aaa;
     color: #aaa;
 }
-#toggle-help-button:hover {
+#toggle-help-button:hover, #mute-button:hover {
     background-color: #fff;
     color: #000;
     border-color: #fff;

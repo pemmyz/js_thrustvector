@@ -1,5 +1,192 @@
 document.addEventListener('DOMContentLoaded', () => {
 
+    // --- SOUND MODULE ---
+    const Sound = (() => {
+        let audioCtx;
+        let isMuted = false;
+        const loopingSounds = new Map(); // For continuous sounds like thrust/hum
+
+        // --- Noise Buffer ---
+        let noiseBuffer = null;
+        function createNoiseBuffer(ctx) {
+            const bufferSize = ctx.sampleRate * 2; // 2 seconds of noise
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const output = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            return buffer;
+        }
+        
+        function init() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                noiseBuffer = createNoiseBuffer(audioCtx);
+            } catch (e) {
+                console.error("Web Audio API is not supported in this browser");
+                audioCtx = null;
+            }
+
+            const muteButton = document.getElementById('mute-button');
+            if (muteButton) {
+                muteButton.addEventListener('click', () => { 
+                    unlockAudio(); 
+                    isMuted = !isMuted; 
+                    muteButton.textContent = isMuted ? 'Unmute' : 'Mute';
+                    if (isMuted) {
+                        loopingSounds.forEach((sound) => {
+                           if (sound.source.stop) sound.source.stop();
+                        });
+                        loopingSounds.clear();
+                    }
+                });
+            }
+        }
+
+        function unlockAudio() {
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(e => console.error("AudioContext resume failed: ", e));
+            }
+        }
+
+        function playSound(type, volume = 0.3) {
+            if (isMuted || !audioCtx) return;
+            
+            const gainNode = audioCtx.createGain();
+            gainNode.connect(audioCtx.destination);
+            gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+
+            let source; 
+            if (type === 'crash') {
+                source = audioCtx.createOscillator();
+                source.type = 'sawtooth';
+                source.frequency.setValueAtTime(140, audioCtx.currentTime);
+                source.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+            } else if (type === 'land') {
+                source = audioCtx.createOscillator();
+                source.type = 'sine';
+                source.frequency.setValueAtTime(300, audioCtx.currentTime);
+                source.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.2);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+            } else if (type === 'clamp_on') {
+                source = audioCtx.createOscillator();
+                source.type = 'square';
+                source.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+            } else if (type === 'clamp_off') {
+                source = audioCtx.createOscillator();
+                source.type = 'square';
+                source.frequency.setValueAtTime(600, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+            } else if (type === 'explosion') {
+                source = audioCtx.createBufferSource();
+                source.buffer = noiseBuffer;
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(2000, audioCtx.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.5);
+                source.connect(filter);
+                filter.connect(gainNode);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+            } else if (type === 'win') {
+                source = audioCtx.createOscillator();
+                source.type = 'sine';
+                source.frequency.setValueAtTime(440, audioCtx.currentTime);
+                source.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+            } else if (type === 'lose') {
+                source = audioCtx.createOscillator();
+                source.type = 'sawtooth';
+                source.frequency.setValueAtTime(200, audioCtx.currentTime);
+                source.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.8);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.0);
+            } else if (type === 'ui_click') {
+                source = audioCtx.createOscillator();
+                source.type = 'triangle';
+                source.frequency.setValueAtTime(700, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            } else {
+                 return;
+            }
+
+            if (source) {
+                if (!(source instanceof AudioBufferSourceNode)) {
+                     source.connect(gainNode);
+                }
+                source.start(audioCtx.currentTime);
+                source.stop(audioCtx.currentTime + 1);
+            }
+        }
+
+        function startLoopingSound(owner, type) {
+            if (isMuted || !audioCtx || loopingSounds.has(owner.id + type)) return;
+
+            const gainNode = audioCtx.createGain();
+            gainNode.connect(audioCtx.destination);
+            let source, filter;
+
+            if (type === 'thrust') {
+                source = audioCtx.createBufferSource();
+                source.buffer = noiseBuffer;
+                source.loop = true;
+                filter = audioCtx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 800;
+                filter.Q.value = 15;
+                source.connect(filter);
+                filter.connect(gainNode);
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
+            } else if (type === 'bomb_hum') {
+                source = audioCtx.createOscillator();
+                source.type = 'sawtooth';
+                source.frequency.setValueAtTime(50, audioCtx.currentTime);
+                const lfo = audioCtx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 5;
+                const lfoGain = audioCtx.createGain();
+                lfoGain.gain.value = 5;
+                lfo.connect(lfoGain);
+                lfoGain.connect(source.frequency);
+                source.connect(gainNode);
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.5);
+                lfo.start();
+            } else {
+                return;
+            }
+            
+            source.start(audioCtx.currentTime);
+            loopingSounds.set(owner.id + type, { source, gainNode });
+        }
+
+        function stopLoopingSound(owner, type) {
+            const sound = loopingSounds.get(owner.id + type);
+            if (sound && audioCtx) {
+                sound.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                sound.gainNode.gain.setValueAtTime(sound.gainNode.gain.value, audioCtx.currentTime);
+                sound.gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+                sound.source.stop(audioCtx.currentTime + 0.21);
+                loopingSounds.delete(owner.id + type);
+            }
+        }
+        
+        function stopAllLoopingSounds() {
+            if (!audioCtx) return;
+            loopingSounds.forEach((sound) => {
+                sound.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                sound.gainNode.gain.setValueAtTime(sound.gainNode.gain.value, audioCtx.currentTime);
+                sound.gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+                sound.source.stop(audioCtx.currentTime + 0.11);
+            });
+            loopingSounds.clear();
+        }
+
+        return { init, unlockAudio, playSound, startLoopingSound, stopLoopingSound, stopAllLoopingSounds };
+    })();
+
+
     // --- GAME MODULE (Main Controller) ---
     const Game = (() => {
         let state = {};
@@ -41,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
             Input.init(canvas);
             resetGame();
             UI.populateLevelSelect(Levels);
-            // Start the game loop immediately to listen for controllers on the menu
             gameLoop(performance.now());
         }
 
@@ -53,13 +239,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state = JSON.parse(JSON.stringify(initialGameState));
             
-            // Reset assignments on new game/level load
             state.gamepadAssignments = [-1, -1];
             UI.updatePlayerName(0, -1);
             UI.updatePlayerName(1, -1);
             UI.hide('p2-hud');
             
-            UI.hide('bomb-hud'); // Explicitly hide the bomb HUD on reset.
+            UI.hide('bomb-hud');
 
             state.isSplitScreen = persistSplitScreen;
             state.scalingMode = persistScalingMode;
@@ -80,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function loadLevel(levelIndex) {
-            const oldAssignments = state.gamepadAssignments; // Persist assignments across levels
+            const oldAssignments = state.gamepadAssignments;
             resetGame();
             state.gamepadAssignments = oldAssignments;
             UI.updatePlayerName(0, state.gamepadAssignments[0]);
@@ -100,33 +285,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 levelData = LevelGenerator.generate(levelTemplate.name, config);
                 cameraZoom = config.zoom;
             } else {
-                // Make a deep copy so we can modify it without affecting the original level data
                 levelData = JSON.parse(JSON.stringify(levelTemplate));
-
-                // --- MODIFICATION FOR TEST LEVEL ---
                 if (levelData.name === "Test Level") {
                     const mainWall = levelData.objects.find(o => o.type === 'cave_wall' && o.points.length > 2);
                     if (mainWall) {
                         const p = mainWall.points;
-                        // Randomly choose which wall segment to remove
                         if (Math.random() < 0.5) {
-                            // Option 1: Remove the most left side bottom horizontal piece.
-                            // This is the segment between p[7]{x:200,y:2000} and p[8]{x:0,y:2000}.
-                            // To remove the final closing segment of a path, we simply remove the last point.
                             console.log("Test Level Mod: Removing left bottom horizontal wall.");
                             mainWall.points.pop(); 
                         } else {
-                            // Option 2: Remove the most right side bottom horizontal piece.
-                            // This is the segment between p[3]{x:1000,y:2000} and p[4]{x:800,y:2000}.
-                            // We reorder the points array so this segment becomes the "gap" at the end of the drawing sequence.
                             console.log("Test Level Mod: Removing right bottom horizontal wall.");
                             mainWall.points = [p[4], p[5], p[6], p[7], p[8], p[0], p[1], p[2], p[3]];
                         }
                     }
                 }
-                // --- END MODIFICATION ---
-
-                // For non-procedural levels, create a grid representation.
                 levelData = LevelGenerator.gridifyStaticLevel(levelData, 100);
                 cameraZoom = 0.4;
             }
@@ -136,24 +308,19 @@ document.addEventListener('DOMContentLoaded', () => {
             state.gridWidth = levelData.gridWidth;
             state.gridHeight = levelData.gridHeight;
             state.discoveredGrid = Array.from({ length: state.gridHeight }, () => Array(state.gridWidth).fill(false));
-
             state.particles = [];
             state.levelObjects = levelData.objects.map(o => ({ ...o }));
-
             const p1Start = levelData.playerStart;
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', state.playerControls[0]);
-
-            // Add player 2 if they were joined from the menu or are hot-joining
             if (state.isSplitScreen || state.gamepadAssignments[1] !== -1) { 
                  addPlayer2(true); 
             }
-
             const bombStart = levelData.bombStart;
             state.bomb = createBomb(bombStart.x, bombStart.y);
             state.camera.x = p1Start.x;
             state.camera.y = p1Start.y;
             state.camera.zoom = cameraZoom;
-            state.mapView = { x: p1Start.x, y: p1Start.y }; // Center map on start
+            state.mapView = { x: p1Start.x, y: p1Start.y };
 
             UI.showLevelMessage(levelData.name, 2000, () => {
                 state.status = 'playing';
@@ -164,18 +331,12 @@ document.addEventListener('DOMContentLoaded', () => {
         function addPlayer2(silent = false) {
             if (state.isTwoPlayer && !silent) return;
             state.isTwoPlayer = true;
-            
             const p1 = state.players[0];
             const p1Start = Levels[state.level].playerStart || { x: 500, y: 1900 };
-
-            // Player ship has a radius of 20, so its diameter is 40.
-            // To touch, their centers should be separated by one diameter.
             const shipRadius = 20;
             const shipDiameter = shipRadius * 2;
-            const totalSeparation = shipDiameter; // 40
-
+            const totalSeparation = shipDiameter;
             const p2Start = {x: p1 ? p1.x + totalSeparation : p1Start.x + totalSeparation, y: p1 ? p1.y : p1Start.y};
-
             state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', state.playerControls[1]);
             UI.show('p2-hud');
             UI.updatePlayerName(1, state.gamepadAssignments[1]);
@@ -184,16 +345,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         function assignGamepad(playerIndex, gamepadIndex) {
             if (playerIndex < 0 || playerIndex > 1) return;
-        
-            // Unassign this gamepad if it was assigned to the other player
             const otherPlayer = 1 - playerIndex;
             if (state.gamepadAssignments[otherPlayer] === gamepadIndex) {
                 state.gamepadAssignments[otherPlayer] = -1;
                 UI.updatePlayerName(otherPlayer, -1);
             }
-            
             state.gamepadAssignments[playerIndex] = gamepadIndex;
-            // Add Player 2 to the game if they just joined with a controller
             if (playerIndex === 1 && !state.isTwoPlayer && state.status === 'playing') {
                 addPlayer2();
             }
@@ -202,36 +359,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function createShip(id, x, y, color, glowColor, controls) {
-            return { id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2, radius: 20, health: 100, fuel: 100, mass: 1, isThrusting: false, wantsToClamp: false, isLanded: false, color, glowColor, controls };
+            return { id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2, radius: 20, health: 100, fuel: 100, mass: 1, isThrusting: false, wantsToClamp: false, isLanded: false, color, glowColor, controls, thrustSoundPlaying: false };
         }
 
-        function createBomb(x, y) { return { x, y, vx: 0, vy: 0, radius: 30, mass: 5, stability: 100, harmony: 0, attachedShips: [], isArmed: false, onPedestal: true }; }
+        function createBomb(x, y) { return { id: 'bomb', x, y, vx: 0, vy: 0, radius: 30, mass: 5, stability: 100, harmony: 0, attachedShips: [], isArmed: false, onPedestal: true, humSoundPlaying: false }; }
 
         function gameLoop(timestamp) {
             gameLoopId = requestAnimationFrame(gameLoop);
             const deltaTime = Math.min(0.05, (timestamp - lastTime) / 1000);
             lastTime = timestamp;
-
-            // Always poll for new controllers, regardless of game state
             Input.pollForNewControllers(state);
-            
             if (state.status === 'menu') {
-                Input.handleMenuInput(state); // Handle keyboard join
-                Renderer.draw(state); // Keep drawing background on menu
+                Input.handleMenuInput(state);
+                Renderer.draw(state);
                 return;
             }
-
             if (state.isMapOpen) {
                 Renderer.drawFullMap(state);
-                return; // Skip game logic and normal rendering when map is open
+                return;
             }
-
             if (state.status === 'paused') { 
                 lastTime = timestamp; 
                 Renderer.drawPauseOverlay(); 
                 return; 
             }
-
             if (state.status === 'playing') {
                 const actions = Input.getPlayerActions(state);
                 Physics.update(state, actions, deltaTime);
@@ -247,8 +398,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 gx: Math.floor(wx / state.gridScale),
                 gy: Math.floor(wy / state.gridScale)
             });
-
-            // Update Fog of War
             const revealRadius = 8;
             state.players.forEach(player => {
                 const { gx, gy } = worldToGrid(player.x, player.y);
@@ -262,7 +411,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             });
-
             const discoveryRadius = 12;
             if (!state.bombDiscovered) {
                 const bombPos = worldToGrid(state.bomb.x, state.bomb.y);
@@ -285,7 +433,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 lastPathfindTime = timestamp;
                 let targetPos = null;
                 const zone = state.levelObjects.find(o => o.type === 'extraction_zone');
-                
                 if (state.bomb.attachedShips.length === 2 && state.extractionZoneDiscovered && zone) {
                     targetPos = worldToGrid(zone.x + zone.width / 2, zone.y + zone.height / 2);
                 } else if (state.bombDiscovered) {
@@ -314,6 +461,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const extractionZone = state.levelObjects.find(o => o.type === 'extraction_zone');
             if (extractionZone && Physics.isColliding(state.bomb, extractionZone) && state.bomb.attachedShips.length > 0) {
+                Sound.playSound('win', 0.6);
+                Sound.stopAllLoopingSounds();
                 state.status = 'level_complete';
                 UI.showLevelMessage("Success!", 3000, () => {
                     if (state.level + 1 < Levels.length) {
@@ -328,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        function endGame(message) { if (state.status === 'game_over') return; state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
+        function endGame(message) { if (state.status === 'game_over') return; Sound.playSound('lose', 0.5); Sound.stopAllLoopingSounds(); state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); } }
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
         function toggleSplitScreen() { state.isSplitScreen = !state.isSplitScreen; UI.updateSplitScreenButton(state.isSplitScreen); if (state.status !== 'playing' && state.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
@@ -351,24 +500,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         function draw(state) {
             ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#050508'; ctx.fillRect(0, 0, width, height);
-            if (state.status === 'menu') return; // Don't draw game objects on menu
+            if (state.status === 'menu') return;
             const p1 = state.players[0]; const p2 = state.players[1];
             if (state.isSplitScreen && state.isTwoPlayer && p1 && p2) {
-                // P1 View
                 ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width / 2, height); ctx.clip();
                 ctx.translate(width / 4, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p1.x, -p1.y);
                 drawWorld(state);
                 ctx.restore();
                 drawMinimap(ctx, state, p1, { x: width / 2 - 210, y: 10, w: 200, h: 150 });
-
-                // P2 View
                 ctx.save(); ctx.beginPath(); ctx.rect(width / 2, 0, width / 2, height); ctx.clip();
                 ctx.translate(width * 0.75, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p2.x, -p2.y);
                 drawWorld(state);
                 ctx.restore();
                 drawMinimap(ctx, state, p2, { x: width / 2 + 10, y: 10, w: 200, h: 150 });
-
-                // Split line
                 ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
             } else if (p1) {
                 ctx.save(); ctx.translate(width / 2, height / 2);
@@ -382,27 +526,21 @@ document.addEventListener('DOMContentLoaded', () => {
         
         function drawMinimap(ctx, state, player, rect) {
             if (!state.mapGrid || state.mapGrid.length === 0 || !player) return;
-            
             ctx.save();
             ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
             ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
             ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
             ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-
             ctx.beginPath();
             ctx.rect(rect.x, rect.y, rect.w, rect.h);
             ctx.clip();
-            
             const baseViewSizeY = 30;
             const cellSize = rect.h / baseViewSizeY;
             const viewSizeX = rect.w / cellSize;
             const viewSizeY = baseViewSizeY;
-
             const pGridX = player.x / state.gridScale;
             const pGridY = player.y / state.gridScale;
-
             ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
-
             for (let y = Math.floor(pGridY - viewSizeY / 2); y < pGridY + viewSizeY / 2; y++) {
                 for (let x = Math.floor(pGridX - viewSizeX / 2); x < pGridX + viewSizeX / 2; x++) {
                     if (x >= 0 && x < state.gridWidth && y >= 0 && y < state.gridHeight && state.discoveredGrid[y][x]) {
@@ -456,39 +594,31 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawFullMap(state) {
             ctx.fillStyle = '#050508';
             ctx.fillRect(0, 0, width, height);
-
             const cellSize = 8;
             const scaleFactor = cellSize / state.gridScale;
             const viewX = state.mapView.x;
             const viewY = state.mapView.y;
-            
             ctx.save();
             ctx.translate(width / 2, height / 2);
-
-            // Draw map grid
             const worldWidthOnScreen = width / scaleFactor;
             const worldHeightOnScreen = height / scaleFactor;
             const startGridX = Math.floor((viewX - worldWidthOnScreen / 2) / state.gridScale);
             const endGridX = Math.ceil((viewX + worldWidthOnScreen / 2) / state.gridScale);
             const startGridY = Math.floor((viewY - worldHeightOnScreen / 2) / state.gridScale);
             const endGridY = Math.ceil((viewY + worldHeightOnScreen / 2) / state.gridScale);
-
             for (let y = startGridY; y < endGridY; y++) {
                 for (let x = startGridX; x < endGridX; x++) {
                     if (x >= 0 && x < state.gridWidth && y >= 0 && y < state.gridHeight && state.discoveredGrid[y][x]) {
                         const cellType = state.mapGrid[y][x];
                         if (cellType === '#') ctx.fillStyle = '#556677';
                         else if (cellType === ' ') ctx.fillStyle = '#1a1a2a';
-                        else ctx.fillStyle = '#222'; // should not happen often
-                        
+                        else ctx.fillStyle = '#222';
                         const screenX = (x * state.gridScale - viewX) * scaleFactor;
                         const screenY = (y * state.gridScale - viewY) * scaleFactor;
                         ctx.fillRect(screenX, screenY, cellSize, cellSize);
                     }
                 }
             }
-
-            // Draw discovered objectives
             if (state.bombDiscovered) {
                 const screenX = (state.bomb.x - viewX) * scaleFactor;
                 const screenY = (state.bomb.y - viewY) * scaleFactor;
@@ -511,8 +641,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             ctx.shadowBlur = 0;
-
-            // Draw players
             state.players.forEach(p => {
                 if(p.health <= 0) return;
                 const screenX = (p.x - viewX) * scaleFactor;
@@ -522,7 +650,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.arc(screenX, screenY, cellSize, 0, Math.PI * 2);
                 ctx.fill();
             });
-
             ctx.restore();
         }
 
@@ -538,14 +665,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const Physics = (() => {
         const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, ROPE_LENGTH: 100, ROPE_STIFFNESS: 120, ROPE_DAMPING: 8, WALL_HALF_THICKNESS: 7.5 };
         function update(state, actions, dt) { updateShips(state, actions, dt); updateBomb(state, dt); updateParticles(state, dt); updateCamera(state, dt); }
-        function updateShips(state, actions, dt) { state.players.forEach((ship, index) => { if (ship.health <= 0) return; const action = index === 0 ? actions.p1 : actions.p2; if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; } if (ship.isLanded) { const targetAngle = -Math.PI / 2; ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt); ship.vx *= 0.9; ship.vy = 0; ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * dt); ship.health = Math.min(100, ship.health + C.FUEL_REGEN * dt); return; } if (action.left) ship.angle -= C.ROTATION_SPEED * dt; if (action.right) ship.angle += C.ROTATION_SPEED * dt; ship.isThrusting = action.up && ship.fuel > 0; if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; if (state.devModeState === 0) { ship.fuel -= C.FUEL_CONSUMPTION * dt; } if(state.particles.length < 300) spawnThrustParticles(state, ship); } ship.vy += C.GRAVITY * dt; if (state.bomb.attachedShips.includes(ship)) { const bomb = state.bomb; const dx = bomb.x - ship.x; const dy = bomb.y - ship.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist; const ny = dy / dist; const vRelX = bomb.vx - ship.vx; const vRelY = bomb.vy - ship.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; ship.vx += (nx * totalForce / ship.mass) * dt; ship.vy += (ny * totalForce / ship.mass) * dt;} } ship.x += ship.vx * dt; ship.y += ship.vy * dt; handleWallCollisions(ship, state); handleObjectCollisions(ship, state); }); }
+        function updateShips(state, actions, dt) { state.players.forEach((ship, index) => { if (ship.health <= 0) { if (ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; } return; } const action = index === 0 ? actions.p1 : actions.p2; if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; } if (ship.isLanded) { const targetAngle = -Math.PI / 2; ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt); ship.vx *= 0.9; ship.vy = 0; ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * dt); ship.health = Math.min(100, ship.health + C.FUEL_REGEN * dt); } ship.isThrusting = !ship.isLanded && action.up && ship.fuel > 0; if (ship.isThrusting && !ship.thrustSoundPlaying) { Sound.startLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = true; } else if (!ship.isThrusting && ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; } if (action.left && !ship.isLanded) ship.angle -= C.ROTATION_SPEED * dt; if (action.right && !ship.isLanded) ship.angle += C.ROTATION_SPEED * dt; if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; if (state.devModeState === 0) { ship.fuel -= C.FUEL_CONSUMPTION * dt; } if(state.particles.length < 300) spawnThrustParticles(state, ship); } ship.vy += C.GRAVITY * dt; if (state.bomb.attachedShips.includes(ship)) { const bomb = state.bomb; const dx = bomb.x - ship.x; const dy = bomb.y - ship.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist; const ny = dy / dist; const vRelX = bomb.vx - ship.vx; const vRelY = bomb.vy - ship.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; ship.vx += (nx * totalForce / ship.mass) * dt; ship.vy += (ny * totalForce / ship.mass) * dt;} } ship.x += ship.vx * dt; ship.y += ship.vy * dt; handleWallCollisions(ship, state); handleObjectCollisions(ship, state); }); }
         function updateBomb(state, dt) { const bomb = state.bomb; if (bomb.onPedestal) return; let forceX = 0, forceY = 0; if (bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { const dx = ship.x - bomb.x, dy = ship.y - bomb.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist, ny = dy / dist; const vRelX = ship.vx - bomb.vx, vRelY = ship.vy - bomb.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalRopeForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; forceX += nx * totalRopeForce; forceY += ny * totalRopeForce; } }); } forceY += C.GRAVITY * bomb.mass; bomb.vx += (forceX / bomb.mass) * dt; bomb.vy += (forceY / bomb.mass) * dt; bomb.vx *= 0.99; bomb.vy *= 0.99; bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt; handleWallCollisions(bomb, state); if (bomb.isArmed) { const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1]; if (!p1 || !p2) return; const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI); bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0; bomb.stability += (bomb.harmony === 1 ? C.BOMB_STABILITY_REGEN : -C.BOMB_STABILITY_DRAIN) * dt; bomb.stability = Math.max(0, Math.min(100, bomb.stability)); } }
-        function handleObjectCollisions(ship, state) { let onAPad = false; state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) { ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true; } }); if (!onAPad) { ship.isLanded = false; } const bomb = state.bomb; const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y); const isAttached = bomb.attachedShips.includes(ship); const inRange = distToBomb < C.ROPE_LENGTH + 40; if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); bomb.onPedestal = false; } else if ((!ship.wantsToClamp || !inRange) && isAttached) { const index = bomb.attachedShips.indexOf(ship); if (index > -1) bomb.attachedShips.splice(index, 1); if (!inRange) ship.wantsToClamp = false; } if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); } }
-        function handleWallCollisions(entity, state) { const effectiveRadius = entity.radius + C.WALL_HALF_THICKNESS / state.camera.zoom; state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i + 1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x) ** 2 + (entity.y - closestPoint.y) ** 2; if (distSq < effectiveRadius * effectiveRadius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = effectiveRadius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { let damageMultiplier = 1; if (state.devModeState === 1) damageMultiplier = 0.25; if (state.devModeState === 2) damageMultiplier = 0; const damage = C.DAMAGE_ON_COLLISION * damageMultiplier; if (entity.health !== undefined) entity.health -= damage; if (entity.stability !== undefined) entity.stability -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 5); state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
+        function handleObjectCollisions(ship, state) { let onAPad = false; state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) { if (!ship.isLanded) { Sound.playSound('land', 0.5); } ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true; } }); if (!onAPad) { ship.isLanded = false; } const bomb = state.bomb; const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y); const isAttached = bomb.attachedShips.includes(ship); const inRange = distToBomb < C.ROPE_LENGTH + 40; if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); Sound.playSound('clamp_on', 0.4); bomb.onPedestal = false; } else if ((!ship.wantsToClamp || !inRange) && isAttached) { const index = bomb.attachedShips.indexOf(ship); if (index > -1) { bomb.attachedShips.splice(index, 1); Sound.playSound('clamp_off', 0.4); } if (!inRange) ship.wantsToClamp = false; } if (bomb.attachedShips.length > 0 && !bomb.humSoundPlaying) { Sound.startLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = true; } else if (bomb.attachedShips.length === 0 && bomb.humSoundPlaying) { Sound.stopLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = false; } if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); } }
+        function handleWallCollisions(entity, state) { const effectiveRadius = entity.radius + C.WALL_HALF_THICKNESS / state.camera.zoom; state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i + 1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x) ** 2 + (entity.y - closestPoint.y) ** 2; if (distSq < effectiveRadius * effectiveRadius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = effectiveRadius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { const volume = Math.min(1.0, impactSpeed / 400); Sound.playSound('crash', volume); let damageMultiplier = 1; if (state.devModeState === 1) damageMultiplier = 0.25; if (state.devModeState === 2) damageMultiplier = 0; const damage = C.DAMAGE_ON_COLLISION * damageMultiplier; if (entity.health !== undefined) entity.health -= damage; if (entity.stability !== undefined) entity.stability -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 5); state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
         function lerpAngle(start, end, amount) { let d = end - start; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; return start + d * amount; }
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
-        function spawnExplosion(state, x, y, count) { for(let i=0; i<count; i++) { const speed = Math.random() * 800 + 50; const angle = Math.random() * Math.PI * 2; state.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 3 + 2, color: ['#ff0', '#f80', '#f00'][Math.floor(Math.random()*3)], life: Math.random() * 1 + 0.5, decay: 1 }); } }
+        function spawnExplosion(state, x, y, count) { if (count > 10) Sound.playSound('explosion', 0.8); for(let i=0; i<count; i++) { const speed = Math.random() * 800 + 50; const angle = Math.random() * Math.PI * 2; state.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 3 + 2, color: ['#ff0', '#f80', '#f00'][Math.floor(Math.random()*3)], life: Math.random() * 1 + 0.5, decay: 1 }); } }
         function updateCamera(state, dt) { if (state.isSplitScreen) return; let targetX=0, targetY=0, count = 0; state.players.forEach(p => { if(p.health > 0) { targetX += p.x; targetY += p.y; count++; } }); if (count > 0) { targetX /= count; targetY /= count; } else if (state.bomb) { targetX = state.bomb.x; targetY = state.bomb.y; } state.camera.x += (targetX - state.camera.x) * 0.08; state.camera.y += (targetY - state.camera.y) * 0.08; if (state.camera.shake.duration > 0) state.camera.shake.duration -= dt; }
         function isColliding(circle, rect) { const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.width)); const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.height)); const dX = circle.x - closestX; const dY = circle.y - closestY; return (dX * dX + dY * dY) < (circle.radius * circle.radius); }
         return { update, isColliding, spawnExplosion };
@@ -557,23 +684,23 @@ document.addEventListener('DOMContentLoaded', () => {
         let isDraggingMap = false;
         let lastMousePos = { x: 0, y: 0 };
         const gamepads = {};
-        const prevButtonStates = [{}, {}, {}, {}]; // Support up to 4 gamepads
+        const prevButtonStates = [{}, {}, {}, {}];
         let rebindingCallback = null;
-        const FACE_BUTTON_INDICES = [0, 1, 2, 3]; // A, B, X, Y on standard layouts
+        const FACE_BUTTON_INDICES = [0, 1, 2, 3];
 
         function init(canvas) { 
             window.addEventListener('keydown', e => { 
+                Sound.unlockAudio();
                 if (rebindingCallback) {
                     e.preventDefault();
                     if (e.code === 'Escape') {
-                        rebindingCallback(null); // Signal cancellation
+                        rebindingCallback(null);
                     } else {
-                        rebindingCallback(e.code); // Send back the new key
+                        rebindingCallback(e.code);
                     }
                     rebindingCallback = null;
                     return;
                 }
-
                 if (!e.repeat) { 
                     const state = Game.getGameState(); 
                     if (state.status === 'playing' || state.status === 'paused') { 
@@ -588,12 +715,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 keys[e.code] = true; 
             }); 
             window.addEventListener('keyup', e => { keys[e.code] = false; }); 
-            
-            canvas.addEventListener('mousedown', e => { if (Game.getGameState().isMapOpen) { isDraggingMap = true; lastMousePos = { x: e.clientX, y: e.clientY }; } });
+            canvas.addEventListener('mousedown', e => { Sound.unlockAudio(); if (Game.getGameState().isMapOpen) { isDraggingMap = true; lastMousePos = { x: e.clientX, y: e.clientY }; } });
             window.addEventListener('mousemove', e => { if (Game.getGameState().isMapOpen && isDraggingMap) { const dx = e.clientX - lastMousePos.x; const dy = e.clientY - lastMousePos.y; Game.panMap(dx, dy); lastMousePos = { x: e.clientX, y: e.clientY }; } });
             window.addEventListener('mouseup', () => { isDraggingMap = false; });
-
-            window.addEventListener("gamepadconnected", e => { console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`); gamepads[e.gamepad.index] = e.gamepad; });
+            window.addEventListener("gamepadconnected", e => { Sound.unlockAudio(); console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`); gamepads[e.gamepad.index] = e.gamepad; });
             window.addEventListener("gamepaddisconnected", e => {
                 console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`);
                 const state = Game.getGameState();
@@ -607,25 +732,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // Universal controller polling function for hot-joining
         function pollForNewControllers(state) {
             const polledPads = navigator.getGamepads();
-
             for (let i = 0; i < polledPads.length; i++) {
                 const pad = polledPads[i];
                 if (!pad) continue;
-
-                // Check if this pad is already assigned
                 if (state.gamepadAssignments.includes(pad.index)) {
-                    // Still need to update its button states for other logic (like clamp)
                     pad.buttons.forEach((button, index) => {
                          prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
                          prevButtonStates[pad.index][index] = button.pressed;
                     });
                     continue;
                 }
-
-                // Check for a new face button press to join
                 let justPressedJoin = false;
                 for (const buttonIndex of FACE_BUTTON_INDICES) {
                     const button = pad.buttons[buttonIndex];
@@ -638,8 +756,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         prevButtonStates[pad.index][buttonIndex] = button.pressed;
                     }
                 }
-                
                 if (justPressedJoin) {
+                    Sound.unlockAudio();
                     if (state.gamepadAssignments[0] === -1) {
                         Game.assignGamepad(0, pad.index);
                     } else if (state.gamepadAssignments[1] === -1) {
@@ -649,13 +767,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Simplified menu input, as controller joining is now global
         function handleMenuInput(state) {
-             // Keyboard Join for P2
              if (!state.isTwoPlayer && keys[state.playerControls[1].up]) {
-                if (state.gamepadAssignments[1] === -1) { // Only join if P2 slot is free
+                if (state.gamepadAssignments[1] === -1) {
                     Game.addPlayer2();
-                    UI.updatePlayerName(1, -1); // Explicitly keyboard
+                    UI.updatePlayerName(1, -1);
                 }
             }
         }
@@ -663,19 +779,15 @@ document.addEventListener('DOMContentLoaded', () => {
         function getPlayerActions(state) {
             const actions = { p1: {}, p2: {} };
             const DEADZONE = 0.2;
-            const THRUST_BUTTON_INDEX = 0;   // 'A' on Xbox, 'X' on PS
-            const CLAMP_BUTTON_INDEX = 13;   // D-Pad Down
+            const THRUST_BUTTON_INDEX = 0;
+            const CLAMP_BUTTON_INDEX = 13;
             const DPAD_LEFT_INDEX = 14;
             const DPAD_RIGHT_INDEX = 15;
-            const ALT_THRUST_BUTTON_INDEX = 7; // Right Trigger
-
+            const ALT_THRUST_BUTTON_INDEX = 7;
             const polledPads = navigator.getGamepads();
-
-            // --- Player 1 ---
             if (state.players[0]) {
                 const c1 = state.playerControls[0];
                 actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] };
-
                 const pad1_index = state.gamepadAssignments[0];
                 if (pad1_index !== -1 && polledPads[pad1_index]) {
                     const pad1 = polledPads[pad1_index];
@@ -683,19 +795,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (stickX < -DEADZONE || pad1.buttons[DPAD_LEFT_INDEX].pressed) actions.p1.left = true;
                     if (stickX > DEADZONE || pad1.buttons[DPAD_RIGHT_INDEX].pressed) actions.p1.right = true;
                     if (pad1.buttons[THRUST_BUTTON_INDEX].pressed || pad1.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p1.up = true;
-                    
                     const clampPressed = pad1.buttons[CLAMP_BUTTON_INDEX].pressed;
                     if (clampPressed && !prevButtonStates[pad1_index][CLAMP_BUTTON_INDEX]) {
                         state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
                     }
                 }
             }
-
-            // --- Player 2 ---
             if (state.players[1]) {
                  const c2 = state.playerControls[1];
                  actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
-
                  const pad2_index = state.gamepadAssignments[1];
                  if (pad2_index !== -1 && polledPads[pad2_index]) {
                      const pad2 = polledPads[pad2_index];
@@ -703,14 +811,12 @@ document.addEventListener('DOMContentLoaded', () => {
                      if (stickX < -DEADZONE || pad2.buttons[DPAD_LEFT_INDEX].pressed) actions.p2.left = true;
                      if (stickX > DEADZONE || pad2.buttons[DPAD_RIGHT_INDEX].pressed) actions.p2.right = true;
                      if (pad2.buttons[THRUST_BUTTON_INDEX].pressed || pad2.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p2.up = true;
-                     
                      const clampPressed = pad2.buttons[CLAMP_BUTTON_INDEX].pressed;
                      if (clampPressed && !prevButtonStates[pad2_index][CLAMP_BUTTON_INDEX]) {
                          state.players[1].wantsToClamp = !state.players[1].wantsToClamp;
                      }
                  }
             }
-            
             return actions;
         }
 
@@ -722,14 +828,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', toggleHelp); elements['close-help-button'].addEventListener('click', () => hide('help-screen')); elements['rebinding-ui'].addEventListener('click', handleRebindClick); populateRebindingUI(); }
+        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); }); elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); }); elements['rebinding-ui'].addEventListener('click', handleRebindClick); populateRebindingUI(); }
         function get(id) { return elements[id]; }
         function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
         function show(id) { elements[id].classList.remove('hidden'); }
         function hide(id) { elements[id].classList.add('hidden'); }
         function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
-        function populateLevelSelect(levels) { const levelContainer = elements['level-select-container']; const settingsContainer = elements['settings-container']; levelContainer.innerHTML = ''; settingsContainer.innerHTML = ''; levels.forEach((level, index) => { const button = document.createElement('button'); button.textContent = level.name; button.addEventListener('click', () => Game.startGame(index)); levelContainer.appendChild(button); }); const splitScreenButton = document.createElement('button'); splitScreenButton.id = 'toggle-split-screen-button'; splitScreenButton.addEventListener('click', () => Game.toggleSplitScreen()); settingsContainer.appendChild(splitScreenButton); updateSplitScreenButton(Game.getGameState().isSplitScreen); const scalingButton = document.createElement('button'); scalingButton.id = 'toggle-scaling-button'; scalingButton.addEventListener('click', () => Game.toggleScalingMode()); settingsContainer.appendChild(scalingButton); updateScalingButton(Game.getGameState().scalingMode); populateRebindingUI(); }
+        function populateLevelSelect(levels) { const levelContainer = elements['level-select-container']; const settingsContainer = elements['settings-container']; levelContainer.innerHTML = ''; settingsContainer.innerHTML = ''; levels.forEach((level, index) => { const button = document.createElement('button'); button.textContent = level.name; button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); }); levelContainer.appendChild(button); }); const splitScreenButton = document.createElement('button'); splitScreenButton.id = 'toggle-split-screen-button'; splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); }); settingsContainer.appendChild(splitScreenButton); updateSplitScreenButton(Game.getGameState().isSplitScreen); const scalingButton = document.createElement('button'); scalingButton.id = 'toggle-scaling-button'; scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); }); settingsContainer.appendChild(scalingButton); updateScalingButton(Game.getGameState().scalingMode); populateRebindingUI(); }
         function updateSplitScreenButton(isSplitScreen) { const button = document.getElementById('toggle-split-screen-button'); if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; } }
         function updateScalingButton(scalingMode) { const button = document.getElementById('toggle-scaling-button'); if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; } }
         function toggleHelp() { const helpScreen = elements['help-screen']; const isHidden = helpScreen.classList.contains('hidden'); if (isHidden) { populateRebindingUI(); const gameState = Game.getGameState(); if (gameState.status === 'playing') { Game.togglePause(true); } show('help-screen'); } else { hide('help-screen'); } }
@@ -737,16 +843,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const id = `p${playerIndex + 1}-name`;
             const element = elements[id];
             if (!element) return;
-            
             let nameText = `P${playerIndex + 1}`;
-            if (gamepadIndex !== -1) {
-                nameText += ` (GP${gamepadIndex})`;
-            }
+            if (gamepadIndex !== -1) { nameText += ` (GP${gamepadIndex})`; }
             nameText += ' 🚀';
             element.textContent = nameText;
         }
         function populateRebindingUI() { const controls = Game.getGameState().playerControls; if (!controls) return; const buttons = elements['rebinding-ui'].querySelectorAll('.rebind-button'); buttons.forEach(button => { const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; if (controls[player] && controls[player][action]) { button.textContent = controls[player][action]; } }); }
-        function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
+        function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; Sound.playSound('ui_click', 0.2); const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
         return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton, updatePlayerName };
     })();
 
@@ -767,7 +870,6 @@ document.addEventListener('DOMContentLoaded', () => {
         function createCavernGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(otherRoom => newRoom.intersect(otherRoom))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) mapGrid[i][j] = ' '; } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } return { mapGrid, rooms }; }
         function createMazeGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(room => newRoom.intersect(room))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) { mapGrid[i][j] = ' '; } } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } return { mapGrid, rooms }; }
         function convertGridToLevelObjects(mapGrid, scale) { const objects = []; const height = mapGrid.length; const width = mapGrid[0].length; const isFloor = (x, y) => (x < 0 || y < 0 || x >= width || y >= height) || mapGrid[y][x] !== '#'; for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) { if (!isFloor(x, y)) { if (isFloor(x, y - 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: (x + 1) * scale, y: y * scale }] }); if (isFloor(x, y + 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: (y + 1) * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); if (isFloor(x - 1, y)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: x * scale, y: (y + 1) * scale }] }); if (isFloor(x + 1, y)) objects.push({ type: 'cave_wall', points: [{ x: (x + 1) * scale, y: y * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); } } } return objects; }
-        
         function generate(name, config) {
             let gridData;
             if (config.generatorType === 'maze') {
@@ -776,17 +878,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 gridData = createCavernGrid(config);
             }
             const { mapGrid, rooms } = gridData;
-
             if (rooms.length < 10) {
                 console.log("Regenerating level, not enough rooms for strategic placement.");
                 return generate(name, config);
             }
-
             const scale = config.scale;
             let objects = convertGridToLevelObjects(mapGrid, scale);
             const usedPadRooms = new Set();
             const WALL_HALF_THICKNESS = 7.5; 
-
             const findLandingPadSpot = (room) => {
                 const candidates = [];
                 const floorY = room.y2;
@@ -801,14 +900,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (candidates.length > 0) {
                     const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
                     const padHeight = 10;
-                    // Move the pad up by its own height
                     const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - (padHeight * 2) - 5; 
                     return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
                 }
                 return null;
             };
-            
-            // 1. Find Player Start Room (closest to center)
             const gridCenterX = config.width / 2;
             const gridCenterY = config.height / 2;
             const startRoom = rooms.reduce((closest, room) => {
@@ -816,11 +912,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const distB = Math.hypot(room.center[0] - gridCenterX, room.center[1] - gridCenterY);
                 return distB < distA ? room : closest;
             });
-
-            // 2. Find Bomb and Exit Rooms (opposite sides)
             let availableRooms = rooms.filter(r => r !== startRoom);
             if (availableRooms.length < 2) { return generate(name, config); }
-
             const findClosestTo = (point, roomList) => {
                 return roomList.reduce((closest, room) => {
                     const distA = Math.hypot(closest.center[0] - point.x, closest.center[1] - point.y);
@@ -828,45 +921,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     return distB < distA ? room : closest;
                 });
             };
-
-            const placementStrategies = [
-                { roomA: availableRooms.reduce((p, c) => p.y1 < c.y1 ? p : c), roomB: availableRooms.reduce((p, c) => p.y2 > c.y2 ? p : c) }, // Top vs Bottom
-                { roomA: availableRooms.reduce((p, c) => p.x1 < c.x1 ? p : c), roomB: availableRooms.reduce((p, c) => p.x2 > c.x2 ? p : c) }, // Left vs Right
-                { roomA: findClosestTo({x: 0, y: 0}, availableRooms), roomB: findClosestTo({x: config.width, y: config.height}, availableRooms) }, // TL vs BR
-                { roomA: findClosestTo({x: config.width, y: 0}, availableRooms), roomB: findClosestTo({x: 0, y: config.height}, availableRooms) }  // TR vs BL
-            ];
-            
+            const placementStrategies = [ { roomA: availableRooms.reduce((p, c) => p.y1 < c.y1 ? p : c), roomB: availableRooms.reduce((p, c) => p.y2 > c.y2 ? p : c) }, { roomA: availableRooms.reduce((p, c) => p.x1 < c.x1 ? p : c), roomB: availableRooms.reduce((p, c) => p.x2 > c.x2 ? p : c) }, { roomA: findClosestTo({x: 0, y: 0}, availableRooms), roomB: findClosestTo({x: config.width, y: config.height}, availableRooms) }, { roomA: findClosestTo({x: config.width, y: 0}, availableRooms), roomB: findClosestTo({x: 0, y: config.height}, availableRooms) } ];
             const chosenStrategy = placementStrategies[Math.floor(Math.random() * placementStrategies.length)];
             let bombRoom, exitRoom;
             if (Math.random() < 0.5) { [bombRoom, exitRoom] = [chosenStrategy.roomA, chosenStrategy.roomB]; } 
             else { [bombRoom, exitRoom] = [chosenStrategy.roomB, chosenStrategy.roomA]; }
-            
             if (bombRoom === exitRoom || !bombRoom || !exitRoom) { return generate(name, config); }
-
-            // 3. Place player, bomb, exit, and pads
             let playerStart;
             let playerPad = findLandingPadSpot(startRoom);
             if (!playerPad) {
-                // If no good spot found, create a fallback pad
                 const fallbackPadX = (startRoom.center[0] - 1) * scale;
                 const padHeight = 10;
                 const fallbackPadY = (startRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
                 playerPad = { type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight };
             }
-
             const spawnCenterX = playerPad.x + playerPad.width / 2;
             const spawnY = playerPad.y - 40;
             const shipRadius = 20;
-
-            // playerStart is P1's starting position, just left of the center.
-            playerStart = {
-                x: spawnCenterX - shipRadius,
-                y: spawnY
-            };
-
+            playerStart = { x: spawnCenterX - shipRadius, y: spawnY };
             objects.push(playerPad);
             usedPadRooms.add(startRoom);
-
             let bombStart;
             let bombPad = findLandingPadSpot(bombRoom);
             if (bombPad) {
@@ -880,12 +954,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 bombStart = { x: fallbackPadX + scale, y: (bombRoom.y1 + 2) * scale };
             }
             usedPadRooms.add(bombRoom);
-
             const exitPos = { x: exitRoom.center[0], y: exitRoom.center[1] };
             objects.push({ type: 'extraction_zone', x: (exitPos.x - 1) * scale, y: (exitPos.y - 1) * scale, width: 2 * scale, height: 2 * scale });
             usedPadRooms.add(exitRoom);
-
-            // 4. Guaranteed Corner Pads
             const tl = findClosestTo({x:0, y:0}, rooms);
             const tr = findClosestTo({x:config.width, y:0}, rooms);
             const bl = findClosestTo({x:0, y:config.height}, rooms);
@@ -897,8 +968,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (cornerPad) { objects.push(cornerPad); usedPadRooms.add(corner); }
                 }
             }
-
-            // 5. Other random pads
             const numPads = config.numLandingPads || 0;
             const potentialPadRooms = rooms.filter(room => !usedPadRooms.has(room));
             for (let i = potentialPadRooms.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [potentialPadRooms[i], potentialPadRooms[j]] = [potentialPadRooms[j], potentialPadRooms[i]]; }
@@ -908,7 +977,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 let randomPad = findLandingPadSpot(padRoom);
                 if (randomPad) { objects.push(randomPad); placedRandomPads++; }
             }
-
             return { name, playerStart, bombStart, objects, mapGrid, scale, gridWidth: config.width, gridHeight: config.height };
         }
 
@@ -939,5 +1007,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return { findPath };
     })();
 
+    Sound.init();
     Game.init();
 });
