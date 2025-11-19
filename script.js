@@ -828,12 +828,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const UI = (() => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() { const ids = ['p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name']; ids.forEach(id => elements[id] = document.getElementById(id)); elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); }); elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); }); elements['rebinding-ui'].addEventListener('click', handleRebindClick); populateRebindingUI(); }
+        function init() {
+            // MODIFIED: Added 'screen' to the list of element IDs
+            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name'];
+            ids.forEach(id => elements[id] = document.getElementById(id));
+            elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
+            elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); });
+            elements['rebinding-ui'].addEventListener('click', handleRebindClick);
+            populateRebindingUI();
+        }
         function get(id) { return elements[id]; }
         function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
-        function show(id) { elements[id].classList.remove('hidden'); }
-        function hide(id) { elements[id].classList.add('hidden'); }
+        
+        // MODIFIED: Functions now toggle a class on the #screen element for the help menu
+        function show(id) {
+            elements[id].classList.remove('hidden');
+            if (id === 'help-screen') {
+                elements['screen'].classList.add('help-menu-active');
+            }
+        }
+        function hide(id) {
+            elements[id].classList.add('hidden');
+            if (id === 'help-screen') {
+                elements['screen'].classList.remove('help-menu-active');
+            }
+        }
+
         function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
         function populateLevelSelect(levels) { const levelContainer = elements['level-select-container']; const settingsContainer = elements['settings-container']; levelContainer.innerHTML = ''; settingsContainer.innerHTML = ''; levels.forEach((level, index) => { const button = document.createElement('button'); button.textContent = level.name; button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); }); levelContainer.appendChild(button); }); const splitScreenButton = document.createElement('button'); splitScreenButton.id = 'toggle-split-screen-button'; splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); }); settingsContainer.appendChild(splitScreenButton); updateSplitScreenButton(Game.getGameState().isSplitScreen); const scalingButton = document.createElement('button'); scalingButton.id = 'toggle-scaling-button'; scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); }); settingsContainer.appendChild(scalingButton); updateScalingButton(Game.getGameState().scalingMode); populateRebindingUI(); }
         function updateSplitScreenButton(isSplitScreen) { const button = document.getElementById('toggle-split-screen-button'); if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; } }
