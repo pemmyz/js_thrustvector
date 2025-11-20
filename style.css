@@ -137,7 +137,17 @@ body {
 .options-row label { text-align: right; }
 .options-row input, .options-row select { font-family: var(--retro-font); font-size: 0.9em; background: #222; color: #eee; border: 2px solid #555; padding: 5px; }
 .options-row input[type="range"] { padding: 0; }
-#close-options-button { margin-top: 20px; align-self: center; }
+
+/* NEW: Styles for the button container at the bottom */
+#options-button-footer {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    width: 100%;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 3px double #555;
+}
 
 /* General Settings Buttons in Options */
 .options-button-row {

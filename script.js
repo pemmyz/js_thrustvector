@@ -298,6 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function startGame(levelIndex) {
             UI.hide('message-screen');
+            UI.hide('options-screen');
+            UI.get('screen').classList.remove('options-menu-active');
             loadLevel(levelIndex);
         }
 
@@ -1002,12 +1004,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
         function init() {
-            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-options-button', 'close-help-button', 'close-options-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
+            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
             ids.forEach(id => elements[id] = document.getElementById(id));
             elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
             elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); elements['screen'].classList.remove('help-menu-active'); });
             elements['toggle-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
-            elements['close-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('options-screen'); elements['screen'].classList.remove('options-menu-active');});
             elements['rebinding-ui'].addEventListener('click', handleRebindClick);
             populateRebindingUI();
             populateOptionsMenu();
@@ -1054,7 +1055,6 @@ document.addEventListener('DOMContentLoaded', () => {
             populateRebindingUI();
         }
         
-        // BUG FIX: Pass the button element directly to prevent lookup issues on creation
         function updateSplitScreenButton(button, isSplitScreen) {
              if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; }
         }
@@ -1091,8 +1091,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function populateOptionsMenu() {
+            const optionsScreen = elements['options-screen'];
             const container = elements['options-content'];
             container.innerHTML = ''; // Clear previous content
+
+            // Clear old footer if it exists
+            const oldFooter = optionsScreen.querySelector('#options-button-footer');
+            if (oldFooter) {
+                oldFooter.remove();
+            }
+
             const config = Game.getConfig();
 
             const createHeading = (text) => {
@@ -1169,14 +1177,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const presetConf = Levels[selectedIndex].config;
                 const targetConf = Game.getConfig().customMaze.config;
                 
-                // Copy all relevant properties from preset to current config
                 Object.keys(targetConf).forEach(key => {
                     if (presetConf[key] !== undefined) {
                         targetConf[key] = presetConf[key];
                     }
                 });
 
-                // Rerender the whole menu to reflect the new values
                 populateOptionsMenu();
             });
             presetRow.appendChild(presetSelect);
@@ -1186,7 +1192,7 @@ document.addEventListener('DOMContentLoaded', () => {
             typeRow.className = 'options-row';
             typeRow.innerHTML = `<label>Generator Type:</label><select id="gen-type"><option value="maze">Maze</option><option value="cavern">Cavern</option></select><span></span>`;
             container.appendChild(typeRow);
-            const genTypeSelect = typeRow.querySelector('#gen-type'); // More robust selector
+            const genTypeSelect = typeRow.querySelector('#gen-type');
             genTypeSelect.value = customConfig.generatorType;
             genTypeSelect.addEventListener('change', () => { customConfig.generatorType = genTypeSelect.value; });
 
@@ -1207,13 +1213,13 @@ document.addEventListener('DOMContentLoaded', () => {
             splitScreenButton.id = 'toggle-split-screen-button';
             splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); });
             buttonRow.appendChild(splitScreenButton);
-            updateSplitScreenButton(splitScreenButton, config.isSplitScreen); // BUG FIX
+            updateSplitScreenButton(splitScreenButton, config.isSplitScreen);
             
             const scalingButton = document.createElement('button');
             scalingButton.id = 'toggle-scaling-button';
             scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); });
             buttonRow.appendChild(scalingButton);
-            updateScalingButton(scalingButton, config.scalingMode); // BUG FIX
+            updateScalingButton(scalingButton, config.scalingMode);
             container.appendChild(buttonRow);
             
             // --- Physics Settings ---
@@ -1232,6 +1238,29 @@ document.addEventListener('DOMContentLoaded', () => {
             container.appendChild(createSettingInput('Rope Stiffness:', physicsConfig, 'ROPE_STIFFNESS', 20, 300, 10));
             container.appendChild(createSettingInput('Rope Damping:', physicsConfig, 'ROPE_DAMPING', 0, 20, 1));
             container.appendChild(createSettingInput('Wall Thickness:', physicsConfig, 'WALL_HALF_THICKNESS', 1, 20, 0.5));
+
+            // --- Options Footer Buttons ---
+            const footer = document.createElement('div');
+            footer.id = 'options-button-footer';
+
+            const startButton = document.createElement('button');
+            startButton.textContent = 'Start Custom Game';
+            startButton.addEventListener('click', () => {
+                Sound.playSound('ui_click', 0.4);
+                Game.startGame(-1); // -1 is the signal for a custom game
+            });
+            footer.appendChild(startButton);
+
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Close';
+            closeButton.addEventListener('click', () => {
+                Sound.playSound('ui_click', 0.2);
+                hide('options-screen');
+                elements['screen'].classList.remove('options-menu-active');
+            });
+            footer.appendChild(closeButton);
+            
+            optionsScreen.appendChild(footer);
         }
 
         function updatePlayerName(playerIndex, gamepadIndex) {
