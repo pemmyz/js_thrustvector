@@ -504,8 +504,18 @@ document.addEventListener('DOMContentLoaded', () => {
         function endGame(message) { if (state.status === 'game_over') return; Sound.playSound('lose', 0.5); Sound.stopAllLoopingSounds(); state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); UI.hide('options-screen');} }
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
-        function toggleSplitScreen() { GameConfig.isSplitScreen = !GameConfig.isSplitScreen; UI.updateSplitScreenButton(GameConfig.isSplitScreen); if (state.status !== 'playing' && GameConfig.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
-        function toggleScalingMode() { GameConfig.scalingMode = GameConfig.scalingMode === 'new' ? 'original' : 'new'; console.log(`Random Map Scaling Mode: ${GameConfig.scalingMode}`); UI.updateScalingButton(GameConfig.scalingMode); }
+        
+        function toggleSplitScreen() {
+            GameConfig.isSplitScreen = !GameConfig.isSplitScreen; 
+            UI.updateSplitScreenButton(document.getElementById('toggle-split-screen-button'), GameConfig.isSplitScreen);
+            if (state.status !== 'playing' && GameConfig.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } 
+        }
+        function toggleScalingMode() {
+            GameConfig.scalingMode = GameConfig.scalingMode === 'new' ? 'original' : 'new';
+            console.log(`Random Map Scaling Mode: ${GameConfig.scalingMode}`);
+            UI.updateScalingButton(document.getElementById('toggle-scaling-button'), GameConfig.scalingMode);
+        }
+
         function toggleMap() { if (state.status !== 'playing' && state.status !== 'paused') return; state.isMapOpen = !state.isMapOpen; if (state.isMapOpen) { UI.show('map-screen'); } else { UI.hide('map-screen'); } }
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
         function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
@@ -1043,8 +1053,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             populateRebindingUI();
         }
-        function updateSplitScreenButton(isSplitScreen) { const button = document.getElementById('toggle-split-screen-button'); if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; } }
-        function updateScalingButton(scalingMode) { const button = document.getElementById('toggle-scaling-button'); if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; } }
+        
+        // BUG FIX: Pass the button element directly to prevent lookup issues on creation
+        function updateSplitScreenButton(button, isSplitScreen) {
+             if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; }
+        }
+        function updateScalingButton(button, scalingMode) {
+            if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; }
+        }
         
         function toggleHelp() {
             const helpScreen = elements['help-screen'];
@@ -1124,12 +1140,53 @@ document.addEventListener('DOMContentLoaded', () => {
             // --- Custom Maze Settings ---
             container.appendChild(createHeading('Custom Maze Generation'));
             const customConfig = config.customMaze.config;
+
+            // NEW: Preset Loader
+            const presetRow = document.createElement('div');
+            presetRow.className = 'options-row';
+            const presetLabel = document.createElement('label');
+            presetLabel.textContent = 'Load Preset:';
+            presetRow.appendChild(presetLabel);
+
+            const presetSelect = document.createElement('select');
+            const defaultOption = document.createElement('option');
+            defaultOption.textContent = '-- Select a Preset --';
+            defaultOption.value = -1;
+            presetSelect.appendChild(defaultOption);
+
+            Levels.forEach((level, index) => {
+                if (level.procedural) {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = level.name;
+                    presetSelect.appendChild(option);
+                }
+            });
+            presetSelect.addEventListener('change', (e) => {
+                const selectedIndex = parseInt(e.target.value, 10);
+                if (selectedIndex === -1) return;
+
+                const presetConf = Levels[selectedIndex].config;
+                const targetConf = Game.getConfig().customMaze.config;
+                
+                // Copy all relevant properties from preset to current config
+                Object.keys(targetConf).forEach(key => {
+                    if (presetConf[key] !== undefined) {
+                        targetConf[key] = presetConf[key];
+                    }
+                });
+
+                // Rerender the whole menu to reflect the new values
+                populateOptionsMenu();
+            });
+            presetRow.appendChild(presetSelect);
+            container.appendChild(presetRow);
             
             const typeRow = document.createElement('div');
             typeRow.className = 'options-row';
             typeRow.innerHTML = `<label>Generator Type:</label><select id="gen-type"><option value="maze">Maze</option><option value="cavern">Cavern</option></select><span></span>`;
             container.appendChild(typeRow);
-            const genTypeSelect = document.getElementById('gen-type');
+            const genTypeSelect = typeRow.querySelector('#gen-type'); // More robust selector
             genTypeSelect.value = customConfig.generatorType;
             genTypeSelect.addEventListener('change', () => { customConfig.generatorType = genTypeSelect.value; });
 
@@ -1150,13 +1207,13 @@ document.addEventListener('DOMContentLoaded', () => {
             splitScreenButton.id = 'toggle-split-screen-button';
             splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); });
             buttonRow.appendChild(splitScreenButton);
-            updateSplitScreenButton(config.isSplitScreen);
+            updateSplitScreenButton(splitScreenButton, config.isSplitScreen); // BUG FIX
             
             const scalingButton = document.createElement('button');
             scalingButton.id = 'toggle-scaling-button';
             scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); });
             buttonRow.appendChild(scalingButton);
-            updateScalingButton(config.scalingMode);
+            updateScalingButton(scalingButton, config.scalingMode); // BUG FIX
             container.appendChild(buttonRow);
             
             // --- Physics Settings ---
