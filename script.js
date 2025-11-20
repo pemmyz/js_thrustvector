@@ -186,6 +186,49 @@ document.addEventListener('DOMContentLoaded', () => {
         return { init, unlockAudio, playSound, startLoopingSound, stopLoopingSound, stopAllLoopingSounds };
     })();
 
+    // --- GAME CONFIGURATION ---
+    const GameConfig = {
+        // General Settings
+        isSplitScreen: true,
+        scalingMode: 'new', // 'new' or 'original'
+
+        // Custom Maze Config
+        customMaze: {
+            name: "Custom Maze",
+            procedural: true,
+            config: {
+                generatorType: 'maze',
+                width: 90,
+                height: 90,
+                maxRooms: 40,
+                roomMinSize: 8,
+                roomMaxSize: 16,
+                scale: 150,      // Legacy
+                zoom: 0.25,      // Legacy
+                newScale: 60,
+                newZoom: 0.4,
+                numLandingPads: 8
+            }
+        },
+
+        // Physics Constants
+        physics: {
+            GRAVITY: 80,
+            THRUST_FORCE: 400,
+            ROTATION_SPEED: 4.5,
+            FUEL_CONSUMPTION: 15,
+            FUEL_REGEN: 20,
+            DAMAGE_ON_COLLISION: 25,
+            BOMB_STABILITY_DRAIN: 5,
+            BOMB_STABILITY_REGEN: 3,
+            HARMONY_ANGLE_THRESHOLD: 0.4,
+            ROPE_LENGTH: 100,
+            ROPE_STIFFNESS: 120,
+            ROPE_DAMPING: 8,
+            WALL_HALF_THICKNESS: 7.5
+        }
+    };
+
 
     // --- GAME MODULE (Main Controller) ---
     const Game = (() => {
@@ -204,8 +247,6 @@ document.addEventListener('DOMContentLoaded', () => {
             status: 'menu',
             isTwoPlayer: false,
             devModeState: 0,
-            isSplitScreen: true,
-            scalingMode: 'new',
             mapGrid: [],
             discoveredGrid: [],
             gridScale: 1,
@@ -232,8 +273,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function resetGame() {
-            const persistSplitScreen = state?.isSplitScreen ?? true;
-            const persistScalingMode = state?.scalingMode || 'new';
             const persistDevMode = state?.devModeState || 0;
             const persistControls = state?.playerControls || initialGameState.playerControls;
 
@@ -246,8 +285,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             UI.hide('bomb-hud');
 
-            state.isSplitScreen = persistSplitScreen;
-            state.scalingMode = persistScalingMode;
             state.devModeState = persistDevMode;
             state.playerControls = persistControls;
 
@@ -271,14 +308,14 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.updatePlayerName(0, state.gamepadAssignments[0]);
 
             state.level = levelIndex;
-            const levelTemplate = Levels[levelIndex];
+            const levelTemplate = levelIndex === -1 ? GameConfig.customMaze : Levels[levelIndex];
 
             let levelData;
             let cameraZoom;
 
             if (levelTemplate.procedural) {
-                const config = { ...levelTemplate.config };
-                if (state.scalingMode === 'new') {
+                const config = JSON.parse(JSON.stringify(levelTemplate.config)); // Deep copy
+                if (GameConfig.scalingMode === 'new') {
                     config.scale = config.newScale;
                     config.zoom = config.newZoom;
                 }
@@ -286,19 +323,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 cameraZoom = config.zoom;
             } else {
                 levelData = JSON.parse(JSON.stringify(levelTemplate));
-                if (levelData.name === "Test Level") {
-                    const mainWall = levelData.objects.find(o => o.type === 'cave_wall' && o.points.length > 2);
-                    if (mainWall) {
-                        const p = mainWall.points;
-                        if (Math.random() < 0.5) {
-                            console.log("Test Level Mod: Removing left bottom horizontal wall.");
-                            mainWall.points.pop(); 
-                        } else {
-                            console.log("Test Level Mod: Removing right bottom horizontal wall.");
-                            mainWall.points = [p[4], p[5], p[6], p[7], p[8], p[0], p[1], p[2], p[3]];
-                        }
-                    }
-                }
                 levelData = LevelGenerator.gridifyStaticLevel(levelData, 100);
                 cameraZoom = 0.4;
             }
@@ -312,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.levelObjects = levelData.objects.map(o => ({ ...o }));
             const p1Start = levelData.playerStart;
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', state.playerControls[0]);
-            if (state.isSplitScreen || state.gamepadAssignments[1] !== -1) { 
+            if (GameConfig.isSplitScreen || state.gamepadAssignments[1] !== -1) { 
                  addPlayer2(true); 
             }
             const bombStart = levelData.bombStart;
@@ -332,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.isTwoPlayer && !silent) return;
             state.isTwoPlayer = true;
             const p1 = state.players[0];
-            const p1Start = Levels[state.level].playerStart || { x: 500, y: 1900 };
+            const p1Start = { x: 500, y: 1900 }; // Fallback
             const shipRadius = 20;
             const shipDiameter = shipRadius * 2;
             const totalSeparation = shipDiameter;
@@ -385,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (state.status === 'playing') {
                 const actions = Input.getPlayerActions(state);
-                Physics.update(state, actions, deltaTime);
+                Physics.update(state, actions, deltaTime, GameConfig.physics);
                 updateDiscoveryAndPathfinding(state, timestamp);
                 Renderer.draw(state);
                 UI.update(state);
@@ -478,14 +502,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function endGame(message) { if (state.status === 'game_over') return; Sound.playSound('lose', 0.5); Sound.stopAllLoopingSounds(); state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
-        function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); } }
+        function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); UI.hide('options-screen');} }
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
-        function toggleSplitScreen() { state.isSplitScreen = !state.isSplitScreen; UI.updateSplitScreenButton(state.isSplitScreen); if (state.status !== 'playing' && state.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
-        function toggleScalingMode() { state.scalingMode = state.scalingMode === 'new' ? 'original' : 'new'; console.log(`Random Map Scaling Mode: ${state.scalingMode}`); UI.updateScalingButton(state.scalingMode); }
+        function toggleSplitScreen() { GameConfig.isSplitScreen = !GameConfig.isSplitScreen; UI.updateSplitScreenButton(GameConfig.isSplitScreen); if (state.status !== 'playing' && GameConfig.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } }
+        function toggleScalingMode() { GameConfig.scalingMode = GameConfig.scalingMode === 'new' ? 'original' : 'new'; console.log(`Random Map Scaling Mode: ${GameConfig.scalingMode}`); UI.updateScalingButton(GameConfig.scalingMode); }
         function toggleMap() { if (state.status !== 'playing' && state.status !== 'paused') return; state.isMapOpen = !state.isMapOpen; if (state.isMapOpen) { UI.show('map-screen'); } else { UI.hide('map-screen'); } }
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
         function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, assignGamepad, getGameState: () => state };
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, assignGamepad, getGameState: () => state, getConfig: () => GameConfig };
     })();
 
     // --- RENDERER MODULE ---
@@ -502,7 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#050508'; ctx.fillRect(0, 0, width, height);
             if (state.status === 'menu') return;
             const p1 = state.players[0]; const p2 = state.players[1];
-            if (state.isSplitScreen && state.isTwoPlayer && p1 && p2) {
+            if (Game.getConfig().isSplitScreen && state.isTwoPlayer && p1 && p2) {
                 ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width / 2, height); ctx.clip();
                 ctx.translate(width / 4, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p1.x, -p1.y);
                 drawWorld(state);
@@ -663,17 +687,156 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- PHYSICS MODULE (EULER INTEGRATION) ---
     const Physics = (() => {
-        const C = { GRAVITY: 80, THRUST_FORCE: 400, ROTATION_SPEED: 4.5, FUEL_CONSUMPTION: 15, FUEL_REGEN: 20, DAMAGE_ON_COLLISION: 25, BOMB_STABILITY_DRAIN: 5, BOMB_STABILITY_REGEN: 3, HARMONY_ANGLE_THRESHOLD: 0.4, ROPE_LENGTH: 100, ROPE_STIFFNESS: 120, ROPE_DAMPING: 8, WALL_HALF_THICKNESS: 7.5 };
-        function update(state, actions, dt) { updateShips(state, actions, dt); updateBomb(state, dt); updateParticles(state, dt); updateCamera(state, dt); }
-        function updateShips(state, actions, dt) { state.players.forEach((ship, index) => { if (ship.health <= 0) { if (ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; } return; } const action = index === 0 ? actions.p1 : actions.p2; if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; } if (ship.isLanded) { const targetAngle = -Math.PI / 2; ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt); ship.vx *= 0.9; ship.vy = 0; ship.fuel = Math.min(100, ship.fuel + C.FUEL_REGEN * dt); ship.health = Math.min(100, ship.health + C.FUEL_REGEN * dt); } ship.isThrusting = !ship.isLanded && action.up && ship.fuel > 0; if (ship.isThrusting && !ship.thrustSoundPlaying) { Sound.startLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = true; } else if (!ship.isThrusting && ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; } if (action.left && !ship.isLanded) ship.angle -= C.ROTATION_SPEED * dt; if (action.right && !ship.isLanded) ship.angle += C.ROTATION_SPEED * dt; if (ship.isThrusting) { ship.vx += Math.cos(ship.angle) * C.THRUST_FORCE * dt; ship.vy += Math.sin(ship.angle) * C.THRUST_FORCE * dt; if (state.devModeState === 0) { ship.fuel -= C.FUEL_CONSUMPTION * dt; } if(state.particles.length < 300) spawnThrustParticles(state, ship); } ship.vy += C.GRAVITY * dt; if (state.bomb.attachedShips.includes(ship)) { const bomb = state.bomb; const dx = bomb.x - ship.x; const dy = bomb.y - ship.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist; const ny = dy / dist; const vRelX = bomb.vx - ship.vx; const vRelY = bomb.vy - ship.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; ship.vx += (nx * totalForce / ship.mass) * dt; ship.vy += (ny * totalForce / ship.mass) * dt;} } ship.x += ship.vx * dt; ship.y += ship.vy * dt; handleWallCollisions(ship, state); handleObjectCollisions(ship, state); }); }
-        function updateBomb(state, dt) { const bomb = state.bomb; if (bomb.onPedestal) return; let forceX = 0, forceY = 0; if (bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { const dx = ship.x - bomb.x, dy = ship.y - bomb.y; const dist = Math.hypot(dx, dy) || 1; if (dist > C.ROPE_LENGTH) { const stretch = dist - C.ROPE_LENGTH; const nx = dx / dist, ny = dy / dist; const vRelX = ship.vx - bomb.vx, vRelY = ship.vy - bomb.vy; const vAlongNormal = vRelX * nx + vRelY * ny; const dampingForce = C.ROPE_DAMPING * vAlongNormal; const totalRopeForce = (C.ROPE_STIFFNESS * stretch) + dampingForce; forceX += nx * totalRopeForce; forceY += ny * totalRopeForce; } }); } forceY += C.GRAVITY * bomb.mass; bomb.vx += (forceX / bomb.mass) * dt; bomb.vy += (forceY / bomb.mass) * dt; bomb.vx *= 0.99; bomb.vy *= 0.99; bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt; handleWallCollisions(bomb, state); if (bomb.isArmed) { const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1]; if (!p1 || !p2) return; const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI); bomb.harmony = (angleDiff < C.HARMONY_ANGLE_THRESHOLD) ? 1 : 0; bomb.stability += (bomb.harmony === 1 ? C.BOMB_STABILITY_REGEN : -C.BOMB_STABILITY_DRAIN) * dt; bomb.stability = Math.max(0, Math.min(100, bomb.stability)); } }
-        function handleObjectCollisions(ship, state) { let onAPad = false; state.levelObjects.forEach(obj => { if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) { if (!ship.isLanded) { Sound.playSound('land', 0.5); } ship.isLanded = true; ship.y = obj.y - ship.radius; onAPad = true; } }); if (!onAPad) { ship.isLanded = false; } const bomb = state.bomb; const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y); const isAttached = bomb.attachedShips.includes(ship); const inRange = distToBomb < C.ROPE_LENGTH + 40; if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); Sound.playSound('clamp_on', 0.1); bomb.onPedestal = false; } else if ((!ship.wantsToClamp || !inRange) && isAttached) { const index = bomb.attachedShips.indexOf(ship); if (index > -1) { bomb.attachedShips.splice(index, 1); Sound.playSound('clamp_off', 0.4); } if (!inRange) ship.wantsToClamp = false; } if (bomb.attachedShips.length > 0 && !bomb.humSoundPlaying) { Sound.startLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = true; } else if (bomb.attachedShips.length === 0 && bomb.humSoundPlaying) { Sound.stopLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = false; } if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); } else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); } }
-        function handleWallCollisions(entity, state) { const effectiveRadius = entity.radius + C.WALL_HALF_THICKNESS / state.camera.zoom; state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => { for (let i = 0; i < wall.points.length - 1; i++) { const p1 = wall.points[i]; const p2 = wall.points[i + 1]; const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y }; const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y }; const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y; if (lineLenSq === 0) continue; const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq)); const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y }; const distSq = (entity.x - closestPoint.x) ** 2 + (entity.y - closestPoint.y) ** 2; if (distSq < effectiveRadius * effectiveRadius) { const impactSpeed = Math.hypot(entity.vx, entity.vy); const dist = Math.sqrt(distSq) || 1; const penetration = effectiveRadius - dist; const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist }; entity.x += normal.x * penetration; entity.y += normal.y * penetration; const dot = entity.vx * normal.x + entity.vy * normal.y; entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y; if (impactSpeed > 50) { const volume = Math.min(1.0, impactSpeed / 400); Sound.playSound('crash', volume); let damageMultiplier = 1; if (state.devModeState === 1) damageMultiplier = 0.25; if (state.devModeState === 2) damageMultiplier = 0; const damage = C.DAMAGE_ON_COLLISION * damageMultiplier; if (entity.health !== undefined) entity.health -= damage; if (entity.stability !== undefined) entity.stability -= damage; Physics.spawnExplosion(state, entity.x, entity.y, 5); state.camera.shake = { duration: 0.2, magnitude: 5 }; } return; } } }); }
+        function update(state, actions, dt, config) {
+            updateShips(state, actions, dt, config);
+            updateBomb(state, dt, config);
+            updateParticles(state, dt);
+            updateCamera(state, dt);
+        }
+        function updateShips(state, actions, dt, config) {
+            state.players.forEach((ship, index) => {
+                if (ship.health <= 0) {
+                    if (ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; }
+                    return;
+                }
+                const action = index === 0 ? actions.p1 : actions.p2;
+                if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; }
+                if (ship.isLanded) {
+                    const targetAngle = -Math.PI / 2;
+                    ship.angle = lerpAngle(ship.angle, targetAngle, 6 * dt);
+                    ship.vx *= 0.9; ship.vy = 0;
+                    ship.fuel = Math.min(100, ship.fuel + config.FUEL_REGEN * dt);
+                    ship.health = Math.min(100, ship.health + config.FUEL_REGEN * dt);
+                }
+                ship.isThrusting = !ship.isLanded && action.up && ship.fuel > 0;
+                if (ship.isThrusting && !ship.thrustSoundPlaying) { Sound.startLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = true; }
+                else if (!ship.isThrusting && ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; }
+                if (action.left && !ship.isLanded) ship.angle -= config.ROTATION_SPEED * dt;
+                if (action.right && !ship.isLanded) ship.angle += config.ROTATION_SPEED * dt;
+                if (ship.isThrusting) {
+                    ship.vx += Math.cos(ship.angle) * config.THRUST_FORCE * dt;
+                    ship.vy += Math.sin(ship.angle) * config.THRUST_FORCE * dt;
+                    if (state.devModeState === 0) { ship.fuel -= config.FUEL_CONSUMPTION * dt; }
+                    if(state.particles.length < 300) spawnThrustParticles(state, ship);
+                }
+                ship.vy += config.GRAVITY * dt;
+                if (state.bomb.attachedShips.includes(ship)) {
+                    const bomb = state.bomb;
+                    const dx = bomb.x - ship.x; const dy = bomb.y - ship.y;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    if (dist > config.ROPE_LENGTH) {
+                        const stretch = dist - config.ROPE_LENGTH;
+                        const nx = dx / dist; const ny = dy / dist;
+                        const vRelX = bomb.vx - ship.vx; const vRelY = bomb.vy - ship.vy;
+                        const vAlongNormal = vRelX * nx + vRelY * ny;
+                        const dampingForce = config.ROPE_DAMPING * vAlongNormal;
+                        const totalForce = (config.ROPE_STIFFNESS * stretch) + dampingForce;
+                        ship.vx += (nx * totalForce / ship.mass) * dt;
+                        ship.vy += (ny * totalForce / ship.mass) * dt;
+                    }
+                }
+                ship.x += ship.vx * dt;
+                ship.y += ship.vy * dt;
+                handleWallCollisions(ship, state, config);
+                handleObjectCollisions(ship, state, config);
+            });
+        }
+        function updateBomb(state, dt, config) {
+            const bomb = state.bomb; if (bomb.onPedestal) return;
+            let forceX = 0, forceY = 0;
+            if (bomb.attachedShips.length > 0) {
+                bomb.attachedShips.forEach(ship => {
+                    const dx = ship.x - bomb.x, dy = ship.y - bomb.y;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    if (dist > config.ROPE_LENGTH) {
+                        const stretch = dist - config.ROPE_LENGTH;
+                        const nx = dx / dist, ny = dy / dist;
+                        const vRelX = ship.vx - bomb.vx, vRelY = ship.vy - bomb.vy;
+                        const vAlongNormal = vRelX * nx + vRelY * ny;
+                        const dampingForce = config.ROPE_DAMPING * vAlongNormal;
+                        const totalRopeForce = (config.ROPE_STIFFNESS * stretch) + dampingForce;
+                        forceX += nx * totalRopeForce; forceY += ny * totalRopeForce;
+                    }
+                });
+            }
+            forceY += config.GRAVITY * bomb.mass;
+            bomb.vx += (forceX / bomb.mass) * dt; bomb.vy += (forceY / bomb.mass) * dt;
+            bomb.vx *= 0.99; bomb.vy *= 0.99;
+            bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt;
+            handleWallCollisions(bomb, state, config);
+            if (bomb.isArmed) {
+                const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1];
+                if (!p1 || !p2) return;
+                const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI);
+                bomb.harmony = (angleDiff < config.HARMONY_ANGLE_THRESHOLD) ? 1 : 0;
+                bomb.stability += (bomb.harmony === 1 ? config.BOMB_STABILITY_REGEN : -config.BOMB_STABILITY_DRAIN) * dt;
+                bomb.stability = Math.max(0, Math.min(100, bomb.stability));
+            }
+        }
+        function handleObjectCollisions(ship, state, config) {
+            let onAPad = false;
+            state.levelObjects.forEach(obj => {
+                if (obj.type === 'landing_pad' && isColliding(ship, obj) && ship.vy > 0) {
+                    if (!ship.isLanded) { Sound.playSound('land', 0.5); }
+                    ship.isLanded = true;
+                    ship.y = obj.y - ship.radius;
+                    onAPad = true;
+                }
+            });
+            if (!onAPad) { ship.isLanded = false; }
+            const bomb = state.bomb; const distToBomb = Math.hypot(ship.x - bomb.x, ship.y - bomb.y);
+            const isAttached = bomb.attachedShips.includes(ship);
+            const inRange = distToBomb < config.ROPE_LENGTH + 40;
+            if (ship.wantsToClamp && inRange && !isAttached) { bomb.attachedShips.push(ship); Sound.playSound('clamp_on', 0.1); bomb.onPedestal = false; }
+            else if ((!ship.wantsToClamp || !inRange) && isAttached) {
+                const index = bomb.attachedShips.indexOf(ship); if (index > -1) { bomb.attachedShips.splice(index, 1); Sound.playSound('clamp_off', 0.4); }
+                if (!inRange) ship.wantsToClamp = false;
+            }
+            if (bomb.attachedShips.length > 0 && !bomb.humSoundPlaying) { Sound.startLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = true; }
+            else if (bomb.attachedShips.length === 0 && bomb.humSoundPlaying) { Sound.stopLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = false; }
+            if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); }
+            else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); }
+        }
+        function handleWallCollisions(entity, state, config) {
+            const effectiveRadius = entity.radius + config.WALL_HALF_THICKNESS / state.camera.zoom;
+            state.levelObjects.filter(o => o.type === 'cave_wall').forEach(wall => {
+                for (let i = 0; i < wall.points.length - 1; i++) {
+                    const p1 = wall.points[i]; const p2 = wall.points[i + 1];
+                    const lineVec = { x: p2.x - p1.x, y: p2.y - p1.y };
+                    const pointVec = { x: entity.x - p1.x, y: entity.y - p1.y };
+                    const lineLenSq = lineVec.x * lineVec.x + lineVec.y * lineVec.y;
+                    if (lineLenSq === 0) continue;
+                    const t = Math.max(0, Math.min(1, (pointVec.x * lineVec.x + pointVec.y * lineVec.y) / lineLenSq));
+                    const closestPoint = { x: p1.x + t * lineVec.x, y: p1.y + t * lineVec.y };
+                    const distSq = (entity.x - closestPoint.x) ** 2 + (entity.y - closestPoint.y) ** 2;
+                    if (distSq < effectiveRadius * effectiveRadius) {
+                        const impactSpeed = Math.hypot(entity.vx, entity.vy);
+                        const dist = Math.sqrt(distSq) || 1;
+                        const penetration = effectiveRadius - dist;
+                        const normal = { x: (entity.x - closestPoint.x) / dist, y: (entity.y - closestPoint.y) / dist };
+                        entity.x += normal.x * penetration; entity.y += normal.y * penetration;
+                        const dot = entity.vx * normal.x + entity.vy * normal.y;
+                        entity.vx -= 1.8 * dot * normal.x; entity.vy -= 1.8 * dot * normal.y;
+                        if (impactSpeed > 50) {
+                            const volume = Math.min(1.0, impactSpeed / 400); Sound.playSound('crash', volume);
+                            let damageMultiplier = 1;
+                            if (state.devModeState === 1) damageMultiplier = 0.25;
+                            if (state.devModeState === 2) damageMultiplier = 0;
+                            const damage = config.DAMAGE_ON_COLLISION * damageMultiplier;
+                            if (entity.health !== undefined) entity.health -= damage;
+                            if (entity.stability !== undefined) entity.stability -= damage;
+                            Physics.spawnExplosion(state, entity.x, entity.y, 5); state.camera.shake = { duration: 0.2, magnitude: 5 };
+                        }
+                        return;
+                    }
+                }
+            });
+        }
         function lerpAngle(start, end, amount) { let d = end - start; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; return start + d * amount; }
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
         function spawnExplosion(state, x, y, count) { if (count > 10) Sound.playSound('explosion', 0.8); for(let i=0; i<count; i++) { const speed = Math.random() * 800 + 50; const angle = Math.random() * Math.PI * 2; state.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 3 + 2, color: ['#ff0', '#f80', '#f00'][Math.floor(Math.random()*3)], life: Math.random() * 1 + 0.5, decay: 1 }); } }
-        function updateCamera(state, dt) { if (state.isSplitScreen) return; let targetX=0, targetY=0, count = 0; state.players.forEach(p => { if(p.health > 0) { targetX += p.x; targetY += p.y; count++; } }); if (count > 0) { targetX /= count; targetY /= count; } else if (state.bomb) { targetX = state.bomb.x; targetY = state.bomb.y; } state.camera.x += (targetX - state.camera.x) * 0.08; state.camera.y += (targetY - state.camera.y) * 0.08; if (state.camera.shake.duration > 0) state.camera.shake.duration -= dt; }
+        function updateCamera(state, dt) { if (Game.getConfig().isSplitScreen) return; let targetX=0, targetY=0, count = 0; state.players.forEach(p => { if(p.health > 0) { targetX += p.x; targetY += p.y; count++; } }); if (count > 0) { targetX /= count; targetY /= count; } else if (state.bomb) { targetX = state.bomb.x; targetY = state.bomb.y; } state.camera.x += (targetX - state.camera.x) * 0.08; state.camera.y += (targetY - state.camera.y) * 0.08; if (state.camera.shake.duration > 0) state.camera.shake.duration -= dt; }
         function isColliding(circle, rect) { const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.width)); const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.height)); const dX = circle.x - closestX; const dY = circle.y - closestY; return (dX * dX + dY * dY) < (circle.radius * circle.radius); }
         return { update, isColliding, spawnExplosion };
     })();
@@ -829,37 +992,191 @@ document.addEventListener('DOMContentLoaded', () => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
         function init() {
-            // MODIFIED: Added 'screen' to the list of element IDs
-            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'toggle-help-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name'];
+            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-options-button', 'close-help-button', 'close-options-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
             ids.forEach(id => elements[id] = document.getElementById(id));
             elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
-            elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); });
+            elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); elements['screen'].classList.remove('help-menu-active'); });
+            elements['toggle-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
+            elements['close-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('options-screen'); elements['screen'].classList.remove('options-menu-active');});
             elements['rebinding-ui'].addEventListener('click', handleRebindClick);
             populateRebindingUI();
+            populateOptionsMenu();
         }
         function get(id) { return elements[id]; }
         function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
         function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
         
-        // MODIFIED: Functions now toggle a class on the #screen element for the help menu
         function show(id) {
             elements[id].classList.remove('hidden');
-            if (id === 'help-screen') {
-                elements['screen'].classList.add('help-menu-active');
-            }
+            if (id === 'help-screen') elements['screen'].classList.add('help-menu-active');
+            if (id === 'options-screen') elements['screen'].classList.add('options-menu-active');
         }
         function hide(id) {
             elements[id].classList.add('hidden');
-            if (id === 'help-screen') {
-                elements['screen'].classList.remove('help-menu-active');
-            }
+            if (id === 'help-screen') elements['screen'].classList.remove('help-menu-active');
+            if (id === 'options-screen') elements['screen'].classList.remove('options-menu-active');
         }
 
         function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
-        function populateLevelSelect(levels) { const levelContainer = elements['level-select-container']; const settingsContainer = elements['settings-container']; levelContainer.innerHTML = ''; settingsContainer.innerHTML = ''; levels.forEach((level, index) => { const button = document.createElement('button'); button.textContent = level.name; button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); }); levelContainer.appendChild(button); }); const splitScreenButton = document.createElement('button'); splitScreenButton.id = 'toggle-split-screen-button'; splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); }); settingsContainer.appendChild(splitScreenButton); updateSplitScreenButton(Game.getGameState().isSplitScreen); const scalingButton = document.createElement('button'); scalingButton.id = 'toggle-scaling-button'; scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); }); settingsContainer.appendChild(scalingButton); updateScalingButton(Game.getGameState().scalingMode); populateRebindingUI(); }
+        function populateLevelSelect(levels) {
+            const levelContainer = elements['level-select-container'];
+            const settingsContainer = elements['settings-container'];
+            levelContainer.innerHTML = ''; settingsContainer.innerHTML = '';
+            
+            levels.forEach((level, index) => {
+                const button = document.createElement('button');
+                button.textContent = level.name;
+                button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); });
+                levelContainer.appendChild(button);
+            });
+             // Add Custom Maze button
+            const customButton = document.createElement('button');
+            customButton.textContent = "Custom Maze";
+            customButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(-1); }); // -1 indicates custom
+            levelContainer.appendChild(customButton);
+
+            // Add Options button
+            const optionsButton = document.createElement('button');
+            optionsButton.textContent = "Options";
+            optionsButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
+            settingsContainer.appendChild(optionsButton);
+
+            populateRebindingUI();
+        }
         function updateSplitScreenButton(isSplitScreen) { const button = document.getElementById('toggle-split-screen-button'); if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; } }
         function updateScalingButton(scalingMode) { const button = document.getElementById('toggle-scaling-button'); if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; } }
-        function toggleHelp() { const helpScreen = elements['help-screen']; const isHidden = helpScreen.classList.contains('hidden'); if (isHidden) { populateRebindingUI(); const gameState = Game.getGameState(); if (gameState.status === 'playing') { Game.togglePause(true); } show('help-screen'); } else { hide('help-screen'); } }
+        
+        function toggleHelp() {
+            const helpScreen = elements['help-screen'];
+            const isHidden = helpScreen.classList.contains('hidden');
+            if (isHidden) {
+                hide('options-screen');
+                populateRebindingUI();
+                const gameState = Game.getGameState();
+                if (gameState.status === 'playing') { Game.togglePause(true); }
+                show('help-screen');
+            } else {
+                hide('help-screen');
+            }
+        }
+
+        function toggleOptions() {
+            const optionsScreen = elements['options-screen'];
+            const isHidden = optionsScreen.classList.contains('hidden');
+            if (isHidden) {
+                hide('help-screen');
+                populateOptionsMenu(); // Refresh values
+                const gameState = Game.getGameState();
+                if (gameState.status === 'playing') { Game.togglePause(true); }
+                show('options-screen');
+            } else {
+                hide('options-screen');
+            }
+        }
+
+        function populateOptionsMenu() {
+            const container = elements['options-content'];
+            container.innerHTML = ''; // Clear previous content
+            const config = Game.getConfig();
+
+            const createHeading = (text) => {
+                const h3 = document.createElement('h3');
+                h3.textContent = text;
+                return h3;
+            };
+
+            const createSettingInput = (label, obj, key, min, max, step) => {
+                const row = document.createElement('div');
+                row.className = 'options-row';
+                
+                const labelEl = document.createElement('label');
+                labelEl.textContent = label;
+                row.appendChild(labelEl);
+
+                const range = document.createElement('input');
+                range.type = 'range';
+                range.min = min;
+                range.max = max;
+                range.step = step;
+                range.value = obj[key];
+                row.appendChild(range);
+
+                const numberInput = document.createElement('input');
+                numberInput.type = 'number';
+                numberInput.min = min;
+                numberInput.max = max;
+                numberInput.step = step;
+                numberInput.value = obj[key];
+                row.appendChild(numberInput);
+                
+                range.addEventListener('input', () => {
+                    obj[key] = parseFloat(range.value);
+                    numberInput.value = range.value;
+                });
+                numberInput.addEventListener('input', () => {
+                    obj[key] = parseFloat(numberInput.value);
+                    range.value = numberInput.value;
+                });
+
+                return row;
+            };
+            
+            // --- Custom Maze Settings ---
+            container.appendChild(createHeading('Custom Maze Generation'));
+            const customConfig = config.customMaze.config;
+            
+            const typeRow = document.createElement('div');
+            typeRow.className = 'options-row';
+            typeRow.innerHTML = `<label>Generator Type:</label><select id="gen-type"><option value="maze">Maze</option><option value="cavern">Cavern</option></select><span></span>`;
+            container.appendChild(typeRow);
+            const genTypeSelect = document.getElementById('gen-type');
+            genTypeSelect.value = customConfig.generatorType;
+            genTypeSelect.addEventListener('change', () => { customConfig.generatorType = genTypeSelect.value; });
+
+            container.appendChild(createSettingInput('Width:', customConfig, 'width', 20, 200, 1));
+            container.appendChild(createSettingInput('Height:', customConfig, 'height', 20, 200, 1));
+            container.appendChild(createSettingInput('Max Rooms:', customConfig, 'maxRooms', 5, 100, 1));
+            container.appendChild(createSettingInput('Room Min Size:', customConfig, 'roomMinSize', 4, 20, 1));
+            container.appendChild(createSettingInput('Room Max Size:', customConfig, 'roomMaxSize', 5, 25, 1));
+            container.appendChild(createSettingInput('Cell Size (Scale):', customConfig, 'newScale', 20, 200, 5));
+            container.appendChild(createSettingInput('Camera Zoom:', customConfig, 'newZoom', 0.1, 1.0, 0.05));
+            container.appendChild(createSettingInput('Landing Pads:', customConfig, 'numLandingPads', 0, 20, 1));
+            
+            // --- General Settings ---
+            container.appendChild(createHeading('General Settings'));
+            const buttonRow = document.createElement('div');
+            buttonRow.className = 'options-button-row';
+            const splitScreenButton = document.createElement('button');
+            splitScreenButton.id = 'toggle-split-screen-button';
+            splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); });
+            buttonRow.appendChild(splitScreenButton);
+            updateSplitScreenButton(config.isSplitScreen);
+            
+            const scalingButton = document.createElement('button');
+            scalingButton.id = 'toggle-scaling-button';
+            scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); });
+            buttonRow.appendChild(scalingButton);
+            updateScalingButton(config.scalingMode);
+            container.appendChild(buttonRow);
+            
+            // --- Physics Settings ---
+            container.appendChild(createHeading('Physics Parameters'));
+            const physicsConfig = config.physics;
+            container.appendChild(createSettingInput('Gravity:', physicsConfig, 'GRAVITY', 0, 200, 5));
+            container.appendChild(createSettingInput('Thrust Force:', physicsConfig, 'THRUST_FORCE', 100, 1000, 10));
+            container.appendChild(createSettingInput('Rotation Speed:', physicsConfig, 'ROTATION_SPEED', 1, 10, 0.1));
+            container.appendChild(createSettingInput('Fuel Consumption:', physicsConfig, 'FUEL_CONSUMPTION', 0, 50, 1));
+            container.appendChild(createSettingInput('Fuel Regen:', physicsConfig, 'FUEL_REGEN', 0, 50, 1));
+            container.appendChild(createSettingInput('Collision Damage:', physicsConfig, 'DAMAGE_ON_COLLISION', 0, 100, 5));
+            container.appendChild(createSettingInput('Bomb Drain:', physicsConfig, 'BOMB_STABILITY_DRAIN', 0, 20, 0.5));
+            container.appendChild(createSettingInput('Bomb Regen:', physicsConfig, 'BOMB_STABILITY_REGEN', 0, 20, 0.5));
+            container.appendChild(createSettingInput('Harmony Angle:', physicsConfig, 'HARMONY_ANGLE_THRESHOLD', 0.1, 1.5, 0.05));
+            container.appendChild(createSettingInput('Rope Length:', physicsConfig, 'ROPE_LENGTH', 50, 200, 5));
+            container.appendChild(createSettingInput('Rope Stiffness:', physicsConfig, 'ROPE_STIFFNESS', 20, 300, 10));
+            container.appendChild(createSettingInput('Rope Damping:', physicsConfig, 'ROPE_DAMPING', 0, 20, 1));
+            container.appendChild(createSettingInput('Wall Thickness:', physicsConfig, 'WALL_HALF_THICKNESS', 1, 20, 0.5));
+        }
+
         function updatePlayerName(playerIndex, gamepadIndex) {
             const id = `p${playerIndex + 1}-name`;
             const element = elements[id];
@@ -906,7 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const scale = config.scale;
             let objects = convertGridToLevelObjects(mapGrid, scale);
             const usedPadRooms = new Set();
-            const WALL_HALF_THICKNESS = 7.5; 
+            const WALL_HALF_THICKNESS = Game.getConfig().physics.WALL_HALF_THICKNESS; 
             const findLandingPadSpot = (room) => {
                 const candidates = [];
                 const floorY = room.y2;
