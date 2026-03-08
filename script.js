@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return buffer;
         }
+
         
         function init() {
             try {

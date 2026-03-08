@@ -53,6 +53,7 @@ body.mobile-mode {
     flex-shrink: 0;
 }
 
+
 /* CRT Scanline Effect */
 #screen::after {
     content: '';
