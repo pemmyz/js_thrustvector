@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+//trying to fix old version from github pages
 
     // --- SOUND MODULE ---
     const Sound = (() => {
