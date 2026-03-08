@@ -905,8 +905,64 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 delete gamepads[e.gamepad.index];
             });
+
+            // Initialize Mobile Controls Logic
+            setupMobileControls();
         }
         
+        function setupMobileControls() {
+            const mobileLeftBtn = document.getElementById('mobile-left');
+            const mobileRightBtn = document.getElementById('mobile-right');
+            const mobileUpBtn = document.getElementById('mobile-up');
+            const mobileClampBtn = document.getElementById('mobile-clamp');
+
+            if (!mobileLeftBtn) return;
+
+            // Helper to map touch/mouse events to keys
+            const addControlListener = (element, keyCode) => {
+                const pressKey = (e) => {
+                    // Prevent default browser zooming/scrolling behavior
+                    if(e.cancelable) e.preventDefault(); 
+                    
+                    Sound.unlockAudio();
+
+                    // Special logic for Clamp (Toggle behavior)
+                    if (keyCode === 'KeyS') {
+                        const state = Game.getGameState();
+                        if (state.status === 'playing' || state.status === 'paused') {
+                             if (state.players[0]) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; }
+                        }
+                    } else {
+                        keys[keyCode] = true;
+                    }
+                };
+                const releaseKey = (e) => {
+                    if(e.cancelable) e.preventDefault();
+                    if (keyCode !== 'KeyS') {
+                        keys[keyCode] = false;
+                    }
+                };
+
+                // Touch Events
+                element.addEventListener('touchstart', pressKey, { passive: false });
+                element.addEventListener('touchend', releaseKey, { passive: false });
+                element.addEventListener('touchcancel', releaseKey, { passive: false });
+                
+                // Mouse Events (for testing on desktop)
+                element.addEventListener('mousedown', pressKey);
+                element.addEventListener('mouseup', releaseKey);
+                element.addEventListener('mouseleave', (e) => {
+                    if (e.buttons === 1 && keyCode !== 'KeyS') { releaseKey(e); }
+                });
+            };
+
+            // Map Buttons to Player 1 Default Keys
+            addControlListener(mobileLeftBtn, 'KeyA'); 
+            addControlListener(mobileRightBtn, 'KeyD'); 
+            addControlListener(mobileUpBtn, 'KeyW');   
+            addControlListener(mobileClampBtn, 'KeyS');
+        }
+
         function pollForNewControllers(state) {
             const polledPads = navigator.getGamepads();
             for (let i = 0; i < polledPads.length; i++) {
@@ -1433,4 +1489,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     Sound.init();
     Game.init();
+
+    // --- FULLSCREEN SCALING LOGIC (EXTERNAL UTILITY) ---
+    const mobileToggleBtn = document.getElementById('mobile-btn');
+    const screenElement = document.getElementById("screen");
+
+    function scaleGame() {
+        const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+
+        if (isFullscreen) {
+            const baseWidth = 960;
+            const baseHeight = 720;
+            
+            // Calculate the scale to fit the window while maintaining aspect ratio
+            const scale = Math.min(
+                window.innerWidth / baseWidth,
+                window.innerHeight / baseHeight
+            );
+            
+            screenElement.style.transform = `scale(${scale})`;
+            document.body.classList.add('mobile-mode'); // Activates CSS lock
+        } else {
+            screenElement.style.transform = 'none'; 
+            document.body.classList.remove('mobile-mode');
+        }
+    }
+
+    function goFull() {
+        const el = document.documentElement;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    }
+
+    window.addEventListener("resize", scaleGame);
+    window.addEventListener("fullscreenchange", scaleGame);
+    window.addEventListener("webkitfullscreenchange", scaleGame);
+    mobileToggleBtn.addEventListener('click', goFull);
+    
+    // Initial scaling check
+    scaleGame();
 });

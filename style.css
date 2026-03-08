@@ -9,54 +9,133 @@
 body {
     margin: 0;
     height: 100vh;
+    width: 100vw;
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: #1a1a1a;
+    background-color: #000;
     font-family: var(--retro-font);
     color: #fff;
-    overflow: hidden;
+    overflow: auto; /* Default scroll behavior */
+}
+
+/* --- MOBILE MODE LOCK --- */
+/* Applied by JS when fullscreen is active */
+body.mobile-mode {
+    overflow: hidden; /* Disables scrollbars */
+    touch-action: none; /* Disables browser gestures */
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    background-color: #000;
 }
 
 #game-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    position: relative; /* Needed for positioning the help button */
-}
-
-#screen {
-    width: 90vw;
-    height: 70vw;
-    max-width: 1024px;
-    max-height: 768px;
-    background-color: #0d0d1a;
-    border-radius: 2em;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.9);
-    padding: 1.5em;
     position: relative;
-    display: flex;
-    justify-content: center;
-    align-items: center;
 }
 
+/* --- THE SCREEN (Fixed Internal Resolution for Scaling) --- */
+#screen {
+    width: 960px;  /* Base Width */
+    height: 720px; /* Base Height */
+    background-color: #0d0d1a;
+    border-radius: 20px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.9);
+    position: relative;
+    overflow: hidden;
+    /* Important for scaling from the middle */
+    transform-origin: center center; 
+    flex-shrink: 0;
+}
+
+/* CRT Scanline Effect */
 #screen::after {
     content: '';
     position: absolute;
-    top: 1.5em;
-    left: 1.5em;
-    right: 1.5em;
-    bottom: 1.5em;
+    top: 0; left: 0; right: 0; bottom: 0;
     background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
     background-size: 100% 4px, 6px 100%;
     pointer-events: none;
     z-index: 100;
 }
 
-/* This rule hides the interlacing pattern when the help or options menu is active */
 #screen.help-menu-active::after,
 #screen.options-menu-active::after {
     display: none;
+}
+
+/* --- TOGGLE BUTTON --- */
+#mobile-btn {
+    position: fixed;
+    top: 10px; left: 10px;
+    z-index: 2000;
+    background: #333;
+    color: white;
+    border: 2px solid white;
+    font-size: 10px;
+    padding: 8px;
+    cursor: pointer;
+    font-family: var(--retro-font);
+}
+/* Hide the button when in mobile mode */
+body.mobile-mode #mobile-btn { display: none; }
+
+/* --- MOBILE CONTROLS OVERLAY --- */
+#mobile-controls {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 3000;
+    display: none; /* Hidden by default */
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* Show controls only when in mobile mode */
+body.mobile-mode #mobile-controls {
+    display: flex;
+}
+
+.mobile-control-btn {
+    pointer-events: auto;
+    width: 80px; height: 80px;
+    background: rgba(255,255,255,0.15);
+    border: 3px solid rgba(255,255,255,0.4);
+    border-radius: 50%;
+    color: white;
+    font-size: 30px;
+    display: flex; justify-content: center; align-items: center;
+    user-select: none;
+    backdrop-filter: blur(4px);
+    margin-bottom: 20px;
+    transition: transform 0.1s, background 0.1s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-control-btn:active { 
+    background: rgba(255,255,255,0.4); 
+    transform: scale(0.95);
+}
+
+#mobile-dpad { 
+    display: flex; 
+    gap: 15px; 
+    margin-left: 20px;
+    margin-bottom: 20px;
+}
+
+#mobile-action { 
+    display: flex;
+    align-items: center;
+    margin-right: 40px; 
+    margin-bottom: 40px;
 }
 
 #game-area {
@@ -76,10 +155,7 @@ body {
 /* Overlays */
 #message-screen, #level-message-screen, #pause-screen, #help-screen, #options-screen, #map-screen {
     position: absolute;
-    top: 1.5em;
-    left: 1.5em;
-    right: 1.5em;
-    bottom: 1.5em;
+    top: 0; left: 0; right: 0; bottom: 0;
     background-color: rgba(0, 0, 0, 0.85);
     display: flex;
     flex-direction: column;
@@ -108,8 +184,8 @@ body {
 #map-screen {
     justify-content: flex-start;
     padding-top: 2em;
-    background-color: rgba(0, 0, 0, 0); /* Transparent background */
-    pointer-events: none; /* Let clicks/drags pass through to the canvas */
+    background-color: rgba(0, 0, 0, 0); 
+    pointer-events: none; 
 }
 #map-screen h2, #map-screen p {
     text-shadow: 2px 2px 4px #000;
@@ -138,7 +214,6 @@ body {
 .options-row input, .options-row select { font-family: var(--retro-font); font-size: 0.9em; background: #222; color: #eee; border: 2px solid #555; padding: 5px; }
 .options-row input[type="range"] { padding: 0; }
 
-/* NEW: Styles for the button container at the bottom */
 #options-button-footer {
     display: flex;
     justify-content: center;
@@ -149,7 +224,6 @@ body {
     border-top: 3px double #555;
 }
 
-/* General Settings Buttons in Options */
 .options-button-row {
     display: flex;
     justify-content: center;
@@ -265,8 +339,8 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 /* Help Button in Corner */
 #help-button-container {
     position: absolute;
-    bottom: 10px;
-    left: 10px;
+    bottom: 20px;
+    left: 20px;
     z-index: 40;
     display: flex;
     gap: 10px;
@@ -288,13 +362,13 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 /* HUD */
 #hud {
     position: absolute;
-    top: 1.5em;
-    left: 1.5em;
-    right: 1.5em;
+    top: 20px;
+    left: 20px;
+    right: 20px;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 15px 25px;
+    padding: 0;
     box-sizing: border-box;
     font-size: 0.9em;
     z-index: 10;
@@ -307,7 +381,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 #p2-hud { color: var(--p2-color); text-shadow: 0 0 8px var(--p2-color); }
 #bomb-hud { 
     position: absolute;
-    top: 630px;
+    top: 650px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -321,7 +395,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
 /* Dev Mode HUD Style */
 #dev-mode-hud {
     position: absolute;
-    top: 700px;
+    top: 680px;
     left: 50%;
     transform: translateX(-50%);
     color: var(--p2-color);

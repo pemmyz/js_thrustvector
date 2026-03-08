@@ -2,13 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- REQUIRED FOR MOBILE SCALING AND PREVENTING ZOOM -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>js_thrustvector (Co-op)</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
+
+    <!-- TOGGLE BUTTON FOR FULLSCREEN/MOBILE MODE -->
+    <button id="mobile-btn">📱 Fullscreen / Mobile Controls</button>
+
     <div id="game-container">
+        <!-- THE SCREEN: Fixed resolution (960x720) base for scaling -->
         <div id="screen">
             <!-- HUD -->
             <div id="hud">
@@ -115,6 +121,19 @@
             <button id="toggle-help-button">Press [H] for Help</button>
         </div>
     </div>
+
+    <!-- MOBILE TOUCH CONTROLS OVERLAY -->
+    <div id="mobile-controls">
+        <div id="mobile-dpad">
+            <button id="mobile-left" class="mobile-control-btn">◀</button>
+            <button id="mobile-right" class="mobile-control-btn">▶</button>
+        </div>
+        <div id="mobile-action">
+            <button id="mobile-up" class="mobile-control-btn">▲</button>
+            <button id="mobile-clamp" class="mobile-control-btn" style="width: 60px; height: 60px; font-size: 20px; margin-left: 20px;">⚓</button>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
