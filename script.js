@@ -540,25 +540,40 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#050508'; ctx.fillRect(0, 0, width, height);
             if (state.status === 'menu') return;
             const p1 = state.players[0]; const p2 = state.players[1];
+
+            // FIX: Scale UI based on canvas width relative to base resolution (960px)
+            const uiScale = width / 960;
+            const mapW = 200 * uiScale;
+            const mapH = 150 * uiScale;
+            const marginX = 10 * uiScale;
+            const marginY = 10 * uiScale;
+            // Adjustment for split screen centering
+            const splitMargin = 10 * uiScale; 
+
             if (Game.getConfig().isSplitScreen && state.isTwoPlayer && p1 && p2) {
                 ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width / 2, height); ctx.clip();
                 ctx.translate(width / 4, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p1.x, -p1.y);
                 drawWorld(state);
                 ctx.restore();
-                drawMinimap(ctx, state, p1, { x: width / 2 - 210, y: 10, w: 200, h: 150 });
+                // Scaled Minimap P1
+                drawMinimap(ctx, state, p1, { x: (width / 2) - mapW - marginX, y: marginY, w: mapW, h: mapH });
+                
                 ctx.save(); ctx.beginPath(); ctx.rect(width / 2, 0, width / 2, height); ctx.clip();
                 ctx.translate(width * 0.75, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p2.x, -p2.y);
                 drawWorld(state);
                 ctx.restore();
-                drawMinimap(ctx, state, p2, { x: width / 2 + 10, y: 10, w: 200, h: 150 });
-                ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
+                // Scaled Minimap P2
+                drawMinimap(ctx, state, p2, { x: (width / 2) + splitMargin, y: marginY, w: mapW, h: mapH });
+                
+                ctx.strokeStyle = 'white'; ctx.lineWidth = 4 * uiScale; ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
             } else if (p1) {
                 ctx.save(); ctx.translate(width / 2, height / 2);
                 if (state.camera.shake.duration > 0) { const { magnitude } = state.camera.shake; ctx.translate(Math.random() * magnitude - magnitude/2, Math.random() * magnitude - magnitude/2); }
                 ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-state.camera.x, -state.camera.y);
                 drawWorld(state);
                 ctx.restore();
-                drawMinimap(ctx, state, p1, { x: width - 210, y: 10, w: 200, h: 150 });
+                // Scaled Minimap Single Player
+                drawMinimap(ctx, state, p1, { x: width - mapW - marginX, y: marginY, w: mapW, h: mapH });
             }
         }
         
