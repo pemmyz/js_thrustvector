@@ -541,13 +541,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.status === 'menu') return;
             const p1 = state.players[0]; const p2 = state.players[1];
 
-            // FIX: Scale UI based on canvas width relative to base resolution (960px)
-            const uiScale = width / 960;
+            // FIX: Scale UI based on canvas height instead of width to prevent ultrawide distortion
+            const uiScale = height / 720;
             const mapW = 200 * uiScale;
             const mapH = 150 * uiScale;
             const marginX = 10 * uiScale;
             const marginY = 10 * uiScale;
-            // Adjustment for split screen centering
             const splitMargin = 10 * uiScale; 
 
             if (Game.getConfig().isSplitScreen && state.isTwoPlayer && p1 && p2) {
@@ -711,7 +710,9 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawShip(ship, zoom) { if (ship.health <= 0) return; ctx.save(); ctx.translate(ship.x, ship.y); ctx.rotate(ship.angle + Math.PI / 2); ctx.shadowColor = ship.glowColor; ctx.shadowBlur = 20 / zoom; ctx.fillStyle = ship.color; ctx.beginPath(); ctx.moveTo(0, -ship.radius * 0.8); ctx.lineTo(-ship.radius * 0.6, ship.radius * 0.6); ctx.lineTo(ship.radius * 0.6, ship.radius * 0.6); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.restore(); }
         function drawBomb(bomb, zoom) { ctx.save(); ctx.translate(bomb.x, bomb.y); if(bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ship.x - bomb.x, ship.y - bomb.y); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4 / zoom; ctx.stroke(); }); } ctx.shadowColor = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.shadowBlur = (100 - bomb.stability) / 5 / zoom; ctx.beginPath(); ctx.arc(0, 0, bomb.radius, 0, Math.PI * 2); ctx.fillStyle = '#666'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.8, 0, Math.PI * 2); ctx.fillStyle = '#444'; ctx.fill(); const blinkRate = bomb.isArmed ? 0.5 : 1.5; if (Math.floor(performance.now() / (500 / blinkRate)) % 2 === 0) { ctx.fillStyle = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.3, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; ctx.restore(); }
         function drawParticles(particles) { ctx.globalCompositeOperation = 'lighter'; particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0; ctx.globalCompositeOperation = 'source-over'; }
-        return { init, draw, drawPauseOverlay, drawFullMap };
+        
+        // EXPOSE RESIZE for dynamic screen expansion
+        return { init, draw, drawPauseOverlay, drawFullMap, resize };
     })();
 
     // --- PHYSICS MODULE (EULER INTEGRATION) ---
@@ -1515,20 +1516,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
 
         if (isFullscreen) {
-            const baseWidth = 960;
             const baseHeight = 720;
+            // Calculate screen aspect ratio dynamically
+            const screenRatio = window.innerWidth / window.innerHeight;
             
-            // Calculate the scale to fit the window while maintaining aspect ratio
-            const scale = Math.min(
-                window.innerWidth / baseWidth,
-                window.innerHeight / baseHeight
-            );
+            // Expand horizontal resolution dynamically for ultrawide/mobile displays.
+            // Maintains a minimum width of 960 (4:3) so vertical screens don't squish.
+            const dynamicWidth = Math.max(960, baseHeight * screenRatio);
+            
+            screenElement.style.width = `${dynamicWidth}px`;
+            screenElement.style.height = `${baseHeight}px`;
+
+            // Calculate scale based entirely on height to flush boundaries to edges
+            const scale = window.innerHeight / baseHeight;
             
             screenElement.style.transform = `scale(${scale})`;
             document.body.classList.add('mobile-mode'); // Activates CSS lock
         } else {
+            // Revert back to fixed 4:3 base logic when out of full screen
+            screenElement.style.width = '960px';
+            screenElement.style.height = '720px';
             screenElement.style.transform = 'none'; 
             document.body.classList.remove('mobile-mode');
+        }
+
+        // Force canvas to adopt the new boundaries to recalculate viewport sizing 
+        if (typeof Renderer !== 'undefined' && Renderer.resize) {
+            Renderer.resize();
         }
     }
 
