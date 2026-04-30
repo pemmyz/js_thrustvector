@@ -1078,11 +1078,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
         function init() {
-            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
+            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
             ids.forEach(id => elements[id] = document.getElementById(id));
             elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
             elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); elements['screen'].classList.remove('help-menu-active'); });
             elements['toggle-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
+            elements['toggle-pause-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.togglePause(); });
             elements['rebinding-ui'].addEventListener('click', handleRebindClick);
             populateRebindingUI();
             populateOptionsMenu();
