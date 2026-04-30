@@ -360,6 +360,40 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     border-color: #fff;
 }
 
+/* Mobile Mode Overrides for UI Buttons */
+body.mobile-mode #help-button-container {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4000;
+    width: max-content;
+}
+
+body.mobile-mode #toggle-help-button,
+body.mobile-mode #toggle-options-button,
+body.mobile-mode #mute-button {
+    font-size: 10px;
+    padding: 10px 12px;
+}
+
+body.mobile-mode #toggle-help-button {
+    font-size: 0px; /* Hides original text dynamically */
+}
+
+body.mobile-mode #toggle-help-button::after {
+    content: "Help";
+    font-size: 10px;
+}
+
+body.mobile-mode #options-button-footer {
+    padding-bottom: 40px; /* Prevent fixed buttons from covering up interactions */
+}
+
+body.mobile-mode #close-help-button {
+    margin-bottom: 40px;
+}
+
 /* HUD */
 #hud {
     position: absolute;

@@ -1281,6 +1281,25 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // --- General Settings ---
             container.appendChild(createHeading('General Settings'));
+
+            const devModeRow = document.createElement('div');
+            devModeRow.className = 'options-button-row';
+            const devModeBtn = document.createElement('button');
+            const updateDevText = () => {
+                const state = Game.getGameState();
+                if(state.devModeState === 0) devModeBtn.textContent = 'Dev Mode: OFF';
+                else if(state.devModeState === 1) devModeBtn.textContent = 'Dev Mode: Reduced Damage';
+                else devModeBtn.textContent = 'Dev Mode: Invulnerable';
+            };
+            updateDevText();
+            devModeBtn.addEventListener('click', () => {
+                Sound.playSound('ui_click', 0.2);
+                Game.cycleDevMode();
+                updateDevText();
+            });
+            devModeRow.appendChild(devModeBtn);
+            container.appendChild(devModeRow);
+
             const buttonRow = document.createElement('div');
             buttonRow.className = 'options-button-row';
             const splitScreenButton = document.createElement('button');
