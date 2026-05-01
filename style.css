@@ -53,7 +53,6 @@ body.mobile-mode {
     flex-shrink: 0;
 }
 
-
 /* CRT Scanline Effect */
 #screen::after {
     content: '';
@@ -368,6 +367,12 @@ body.mobile-mode #help-button-container {
     transform: translateX(-50%);
     z-index: 4000;
     width: max-content;
+}
+
+/* --- HIDE BUTTONS & CONTROLS WHEN MENUS ARE OPEN ON MOBILE --- */
+body.mobile-mode.menu-open #help-button-container,
+body.mobile-mode.menu-open #mobile-controls {
+    display: none !important;
 }
 
 body.mobile-mode #toggle-help-button,

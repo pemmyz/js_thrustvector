@@ -1096,11 +1096,19 @@ document.addEventListener('DOMContentLoaded', () => {
             elements[id].classList.remove('hidden');
             if (id === 'help-screen') elements['screen'].classList.add('help-menu-active');
             if (id === 'options-screen') elements['screen'].classList.add('options-menu-active');
+            
+            if (id === 'help-screen' || id === 'options-screen') {
+                document.body.classList.add('menu-open');
+            }
         }
         function hide(id) {
             elements[id].classList.add('hidden');
             if (id === 'help-screen') elements['screen'].classList.remove('help-menu-active');
             if (id === 'options-screen') elements['screen'].classList.remove('options-menu-active');
+            
+            if (elements['help-screen']?.classList.contains('hidden') && elements['options-screen']?.classList.contains('hidden')) {
+                document.body.classList.remove('menu-open');
+            }
         }
 
         function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
