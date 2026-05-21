@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <!-- REQUIRED FOR MOBILE SCALING AND PREVENTING ZOOM -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>js_thrustvector (Co-op)</title>
+    <title>js_thrustvector</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
@@ -16,6 +16,9 @@
     <div id="game-container">
         <!-- THE SCREEN: Fixed resolution (960x720) base for scaling -->
         <div id="screen">
+            <!-- NEW: Switch Player Button for Single Player Mode -->
+            <button id="switch-player-btn" class="hidden">Switch to P2 (Tab)</button>
+
             <!-- HUD -->
             <div id="hud">
                 <div class="player-hud" id="p1-hud">
@@ -43,7 +46,7 @@
 
             <!-- Game Over / Start Screen -->
             <div id="message-screen">
-                <h1>js_thrustvector (Co-op)</h1>
+                <h1>js_thrustvector</h1>
                 <p class="instructions">Select a level to begin.</p>
                 <div id="level-select-container" class="button-container">
                     <!-- Level buttons will be added here by JS -->
@@ -89,6 +92,7 @@
                     <p><strong>General:</strong> [P] to Pause, [M] for Map, [H] for Help, [V] for Dev Mode.</p>
                     <p><strong>Harmony:</strong> Both ships must clamp the bomb to lift it. Fly smoothly and match your partner's angle to keep the bomb stable. Poor harmony or hard impacts will cause it to explode!</p>
                     <p><strong>Hazards:</strong> Colliding with cave walls will damage your ship. Landing on green pads will repair and refuel you.</p>
+                    <p><strong>Single Player:</strong> Toggle in Options. Use [Tab] or the on-screen button to switch ships. When both clamp the bomb, your controls will pilot both simultaneously.</p>
 
                     <div id="rebinding-ui">
                         <h3>Controls Rebinding (Keyboard)</h3>

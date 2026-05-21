@@ -85,6 +85,36 @@ body.mobile-mode {
 /* Hide the button when in mobile mode */
 body.mobile-mode #mobile-btn { display: none; }
 
+/* --- SINGLE PLAYER SWITCH BUTTON --- */
+#switch-player-btn {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    padding: 10px 15px;
+    font-family: var(--retro-font);
+    font-size: 0.7em;
+    background-color: rgba(0,0,0,0.8);
+    border: 2px solid var(--p2-color);
+    color: var(--p2-color);
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.2s;
+}
+
+#switch-player-btn:hover {
+    background-color: #222;
+}
+
+body.mobile-mode #switch-player-btn {
+    top: auto;
+    bottom: 150px; /* Sits above the mobile controls */
+    font-size: 14px;
+    padding: 15px 25px;
+    border-width: 3px;
+}
+
 /* --- MOBILE CONTROLS OVERLAY --- */
 #mobile-controls {
     position: fixed;

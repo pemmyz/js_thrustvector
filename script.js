@@ -1,6 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-//trying to fix old version from github pages
-
     // --- SOUND MODULE ---
     const Sound = (() => {
         let audioCtx;
@@ -19,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return buffer;
         }
 
-        
         function init() {
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -193,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // General Settings
         isSplitScreen: true,
         scalingMode: 'new', // 'new' or 'original'
+        isSinglePlayerMode: false, // Tracks Single Player Toggle
 
         // Custom Maze Config
         customMaze: {
@@ -241,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const initialGameState = {
             level: 0,
+            activePlayerIndex: 0, // Tracks which ship is controlled in SP Mode
             players: [],
             bomb: null,
             particles: [],
@@ -340,15 +339,26 @@ document.addEventListener('DOMContentLoaded', () => {
             state.levelObjects = levelData.objects.map(o => ({ ...o }));
             const p1Start = levelData.playerStart;
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', state.playerControls[0]);
-            if (GameConfig.isSplitScreen || state.gamepadAssignments[1] !== -1) { 
+            
+            if (GameConfig.isSplitScreen || state.gamepadAssignments[1] !== -1 || GameConfig.isSinglePlayerMode) { 
                  addPlayer2(true); 
             }
+            
             const bombStart = levelData.bombStart;
             state.bomb = createBomb(bombStart.x, bombStart.y);
             state.camera.x = p1Start.x;
             state.camera.y = p1Start.y;
             state.camera.zoom = cameraZoom;
             state.mapView = { x: p1Start.x, y: p1Start.y };
+
+            // Show/hide switch button and reset active ship
+            if (GameConfig.isSinglePlayerMode) {
+                UI.get('switch-player-btn').classList.remove('hidden');
+                state.activePlayerIndex = 0;
+                UI.updateSwitchButton(state.activePlayerIndex);
+            } else {
+                UI.get('switch-player-btn').classList.add('hidden');
+            }
 
             UI.showLevelMessage(levelData.name, 2000, () => {
                 state.status = 'playing';
@@ -509,11 +519,23 @@ document.addEventListener('DOMContentLoaded', () => {
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); UI.hide('options-screen');} }
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
         
+        function toggleSinglePlayerMode() {
+            GameConfig.isSinglePlayerMode = !GameConfig.isSinglePlayerMode;
+            console.log(`Single Player Mode: ${GameConfig.isSinglePlayerMode}`);
+        }
+
+        function switchActiveShip() {
+            if (state.status !== 'playing' || !GameConfig.isSinglePlayerMode) return;
+            state.activePlayerIndex = 1 - state.activePlayerIndex;
+            UI.updateSwitchButton(state.activePlayerIndex);
+        }
+
         function toggleSplitScreen() {
             GameConfig.isSplitScreen = !GameConfig.isSplitScreen; 
             UI.updateSplitScreenButton(document.getElementById('toggle-split-screen-button'), GameConfig.isSplitScreen);
             if (state.status !== 'playing' && GameConfig.isSplitScreen && !state.isTwoPlayer) { addPlayer2(); } 
         }
+
         function toggleScalingMode() {
             GameConfig.scalingMode = GameConfig.scalingMode === 'new' ? 'original' : 'new';
             console.log(`Random Map Scaling Mode: ${GameConfig.scalingMode}`);
@@ -523,7 +545,8 @@ document.addEventListener('DOMContentLoaded', () => {
         function toggleMap() { if (state.status !== 'playing' && state.status !== 'paused') return; state.isMapOpen = !state.isMapOpen; if (state.isMapOpen) { UI.show('map-screen'); } else { UI.hide('map-screen'); } }
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
         function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, assignGamepad, getGameState: () => state, getConfig: () => GameConfig };
+        
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, toggleSinglePlayerMode, switchActiveShip, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, assignGamepad, getGameState: () => state, getConfig: () => GameConfig };
     })();
 
     // --- RENDERER MODULE ---
@@ -541,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.status === 'menu') return;
             const p1 = state.players[0]; const p2 = state.players[1];
 
-            // FIX: Scale UI based on canvas height instead of width to prevent ultrawide distortion
+            // Scale UI based on canvas height instead of width to prevent ultrawide distortion
             const uiScale = height / 720;
             const mapW = 200 * uiScale;
             const mapH = 150 * uiScale;
@@ -715,7 +738,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return { init, draw, drawPauseOverlay, drawFullMap, resize };
     })();
 
-    // --- PHYSICS MODULE (EULER INTEGRATION) ---
+
+
+// --- PHYSICS MODULE (EULER INTEGRATION) ---
     const Physics = (() => {
         function update(state, actions, dt, config) {
             updateShips(state, actions, dt, config);
@@ -897,8 +922,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!e.repeat) { 
                     const state = Game.getGameState(); 
                     if (state.status === 'playing' || state.status === 'paused') { 
-                        if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } 
-                        if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } 
+                        // Intercept Clamp and Tab keys for Single Player Mode
+                        if (Game.getConfig().isSinglePlayerMode) {
+                            if (e.code === 'Tab') {
+                                e.preventDefault();
+                                Game.switchActiveShip();
+                            } else if (state.players[0] && e.code === state.players[0].controls.clamp) {
+                                const activeShip = state.players[state.activePlayerIndex];
+                                if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
+                            }
+                        } else {
+                            if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } 
+                            if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } 
+                        }
                     } 
                     if (e.code === 'KeyP' && !Game.getGameState().isMapOpen) Game.togglePause(); 
                     if (e.code === 'KeyH') UI.toggleHelp(); 
@@ -948,7 +984,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (keyCode === 'KeyS') {
                         const state = Game.getGameState();
                         if (state.status === 'playing' || state.status === 'paused') {
-                             if (state.players[0]) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; }
+                            if (Game.getConfig().isSinglePlayerMode) {
+                                const activeShip = state.players[state.activePlayerIndex];
+                                if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
+                            } else {
+                                if (state.players[0]) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; }
+                            }
                         }
                     } else {
                         keys[keyCode] = true;
@@ -1034,6 +1075,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const DPAD_RIGHT_INDEX = 15;
             const ALT_THRUST_BUTTON_INDEX = 7;
             const polledPads = navigator.getGamepads();
+            
             if (state.players[0]) {
                 const c1 = state.playerControls[0];
                 actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] };
@@ -1046,7 +1088,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (pad1.buttons[THRUST_BUTTON_INDEX].pressed || pad1.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p1.up = true;
                     const clampPressed = pad1.buttons[CLAMP_BUTTON_INDEX].pressed;
                     if (clampPressed && !prevButtonStates[pad1_index][CLAMP_BUTTON_INDEX]) {
-                        state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
+                        // Route Gamepad Clamp in Single Player Mode
+                        if (Game.getConfig().isSinglePlayerMode) {
+                            const activeShip = state.players[state.activePlayerIndex];
+                            if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
+                        } else {
+                            state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
+                        }
                     }
                 }
             }
@@ -1066,6 +1114,28 @@ document.addEventListener('DOMContentLoaded', () => {
                      }
                  }
             }
+
+            // Override controls if Single Player Mode is active
+            if (Game.getConfig().isSinglePlayerMode) {
+                const activeActions = { ...actions.p1 }; // P1 physical inputs always used
+                const bothTied = (state.bomb && state.bomb.attachedShips.length === 2);
+                
+                if (bothTied) {
+                    // Sync both ships to P1's physical inputs for perfect harmony
+                    actions.p1 = { ...activeActions };
+                    actions.p2 = { ...activeActions };
+                } else {
+                    // Route to active ship, ground the inactive one
+                    if (state.activePlayerIndex === 0) {
+                        actions.p1 = { ...activeActions };
+                        actions.p2 = { up: false, left: false, right: false };
+                    } else {
+                        actions.p1 = { up: false, left: false, right: false };
+                        actions.p2 = { ...activeActions };
+                    }
+                }
+            }
+
             return actions;
         }
 
@@ -1078,8 +1148,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
         function init() {
-            const ids = ['screen', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
+            const ids = ['screen', 'switch-player-btn', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
             ids.forEach(id => elements[id] = document.getElementById(id));
+            
+            elements['switch-player-btn'].addEventListener('click', () => { 
+                Sound.playSound('ui_click', 0.2); 
+                Game.switchActiveShip(); 
+            });
+
             elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
             elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); elements['screen'].classList.remove('help-menu-active'); });
             elements['toggle-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
@@ -1143,6 +1219,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         function updateScalingButton(button, scalingMode) {
             if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; }
+        }
+        function updateSwitchButton(activeIndex) {
+            const btn = elements['switch-player-btn'];
+            if (!btn) return;
+            if (activeIndex === 0) {
+                btn.textContent = "Switch to P2 (Tab)";
+                btn.style.borderColor = "var(--p2-color)";
+                btn.style.color = "var(--p2-color)";
+            } else {
+                btn.textContent = "Switch to P1 (Tab)";
+                btn.style.borderColor = "var(--p1-color)";
+                btn.style.color = "var(--p1-color)";
+            }
         }
         
         function toggleHelp() {
@@ -1232,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', () => {
             container.appendChild(createHeading('Custom Maze Generation'));
             const customConfig = config.customMaze.config;
 
-            // NEW: Preset Loader
+            // Preset Loader
             const presetRow = document.createElement('div');
             presetRow.className = 'options-row';
             const presetLabel = document.createElement('label');
@@ -1290,6 +1379,21 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // --- General Settings ---
             container.appendChild(createHeading('General Settings'));
+
+            const singlePlayerRow = document.createElement('div');
+            singlePlayerRow.className = 'options-button-row';
+            const spButton = document.createElement('button');
+            const updateSPText = () => {
+                spButton.textContent = `Gameplay: ${config.isSinglePlayerMode ? 'Single Player' : 'Co-op'}`;
+            };
+            updateSPText();
+            spButton.addEventListener('click', () => { 
+                Sound.playSound('ui_click', 0.2); 
+                Game.toggleSinglePlayerMode(); 
+                updateSPText(); 
+            });
+            singlePlayerRow.appendChild(spButton);
+            container.appendChild(singlePlayerRow);
 
             const devModeRow = document.createElement('div');
             devModeRow.className = 'options-button-row';
@@ -1376,7 +1480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         function populateRebindingUI() { const controls = Game.getGameState().playerControls; if (!controls) return; const buttons = elements['rebinding-ui'].querySelectorAll('.rebind-button'); buttons.forEach(button => { const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; if (controls[player] && controls[player][action]) { button.textContent = controls[player][action]; } }); }
         function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; Sound.playSound('ui_click', 0.2); const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
-        return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton, updatePlayerName };
+        return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton, updatePlayerName, updateSwitchButton };
     })();
 
     // --- LEVEL DATA ---
