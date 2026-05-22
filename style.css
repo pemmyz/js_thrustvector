@@ -87,11 +87,6 @@ body.mobile-mode #mobile-btn { display: none; }
 
 /* --- SINGLE PLAYER SWITCH BUTTON --- */
 #switch-player-btn {
-    position: absolute;
-    top: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 100;
     padding: 10px 15px;
     font-family: var(--retro-font);
     font-size: 0.7em;
@@ -108,11 +103,15 @@ body.mobile-mode #mobile-btn { display: none; }
 }
 
 body.mobile-mode #switch-player-btn {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
     top: auto;
     bottom: 150px; /* Sits above the mobile controls */
     font-size: 14px;
     padding: 15px 25px;
     border-width: 3px;
+    z-index: 100;
 }
 
 /* --- MOBILE CONTROLS OVERLAY --- */
@@ -374,6 +373,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     z-index: 40;
     display: flex;
     gap: 10px;
+    align-items: center; /* Ensures buttons align vertically center with each other */
 }
 #toggle-help-button, #toggle-options-button, #mute-button, #toggle-pause-button {
     font-size: 0.7em;
@@ -466,7 +466,7 @@ body.mobile-mode #close-help-button {
 /* Dev Mode HUD Style */
 #dev-mode-hud {
     position: absolute;
-    top: 680px;
+    top: 610px; /* Lifted upwards to sit above the bomb HUD and safely above the bottom button bar */
     left: 50%;
     transform: translateX(-50%);
     color: var(--p2-color);
