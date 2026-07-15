@@ -256,9 +256,9 @@ document.addEventListener('DOMContentLoaded', () => {
             scores: [0, 0, 0, 0], // Tracks score for P1, P2, P3, P4
             isMapOpen: false,
             mapView: { x: 0, y: 0 },
-            playerControls: [
-                { up: 'KeyW', left: 'KeyA', right: 'KeyD', down: 'KeyS', clamp: 'Space' },
-                { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', down: 'ArrowDown', clamp: 'ShiftRight' },
+playerControls: [
+                { up: 'KeyW', left: 'KeyA', right: 'KeyD', down: 'KeyS', clamp: 'ControlLeft' },
+                { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', down: 'ArrowDown', clamp: 'ControlRight' },
                 { up: 'KeyI', left: 'KeyJ', right: 'KeyL', down: 'KeyK', clamp: 'KeyO' },
                 { up: 'Numpad8', left: 'Numpad4', right: 'Numpad6', down: 'Numpad5', clamp: 'Numpad0' }
             ],
