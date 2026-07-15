@@ -22,6 +22,7 @@ body {
 }
 
 /* --- MOBILE MODE LOCK --- */
+/* Applied by JS when fullscreen is active */
 body.mobile-mode {
     overflow: hidden; /* Disables scrollbars */
     touch-action: none; /* Disables browser gestures */
@@ -82,6 +83,7 @@ body.mobile-mode {
     cursor: pointer;
     font-family: var(--retro-font);
 }
+/* Hide the button when in mobile mode */
 body.mobile-mode #mobile-btn { display: none; }
 
 /* --- SINGLE PLAYER SWITCH BUTTON --- */
@@ -106,7 +108,7 @@ body.mobile-mode #switch-player-btn {
     left: 50%;
     transform: translateX(-50%);
     top: auto;
-    bottom: 150px; 
+    bottom: 150px; /* Sits above the mobile controls */
     font-size: 14px;
     padding: 15px 25px;
     border-width: 3px;
@@ -119,13 +121,14 @@ body.mobile-mode #switch-player-btn {
     top: 0; left: 0; width: 100%; height: 100%;
     pointer-events: none;
     z-index: 3000;
-    display: none; 
+    display: none; /* Hidden by default */
     justify-content: space-between;
     align-items: flex-end;
     padding: 20px;
     box-sizing: border-box;
 }
 
+/* Show controls only when in mobile mode */
 body.mobile-mode #mobile-controls {
     display: flex;
 }
@@ -207,6 +210,7 @@ body.mobile-mode #mobile-controls {
 #pause-screen h2 { font-size: 2em; color: #fff; }
 #pause-screen p { font-size: 0.8em; }
 
+/* Map Screen Specific Styles */
 #map-screen {
     justify-content: flex-start;
     padding-top: 2em;
@@ -372,7 +376,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     z-index: 40;
     display: flex;
     gap: 10px;
-    align-items: center; 
+    align-items: center; /* Ensures buttons align vertically center with each other */
 }
 #toggle-help-button, #toggle-options-button, #mute-button, #toggle-pause-button {
     font-size: 0.7em;
@@ -398,6 +402,7 @@ body.mobile-mode #help-button-container {
     width: max-content;
 }
 
+/* --- HIDE BUTTONS & CONTROLS WHEN MENUS ARE OPEN ON MOBILE --- */
 body.mobile-mode.menu-open #help-button-container,
 body.mobile-mode.menu-open #mobile-controls {
     display: none !important;
@@ -412,7 +417,7 @@ body.mobile-mode #toggle-pause-button {
 }
 
 body.mobile-mode #toggle-help-button {
-    font-size: 0px; 
+    font-size: 0px; /* Hides original text dynamically */
 }
 
 body.mobile-mode #toggle-help-button::after {
@@ -421,7 +426,7 @@ body.mobile-mode #toggle-help-button::after {
 }
 
 body.mobile-mode #options-button-footer {
-    padding-bottom: 40px; 
+    padding-bottom: 40px; /* Prevent fixed buttons from covering up interactions */
 }
 
 body.mobile-mode #close-help-button {
@@ -464,7 +469,6 @@ body.mobile-mode #close-help-button {
 }
 
 .player-hud { 
-    text-align: left; 
     background-color: rgba(5, 5, 8, 0.75);
     padding: 6px;
     border-radius: 5px;
@@ -496,6 +500,7 @@ body.mobile-mode #close-help-button {
 
 #bomb-stability { color: var(--safe-color); }
 
+/* Dev Mode HUD Style */
 #dev-mode-hud {
     margin-top: 10px;
     color: var(--p2-color);

@@ -364,16 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const bombStart = levelData.bombStart;
             state.bomb = createBomb(bombStart.x, bombStart.y);
-
-            // Scale bomb mass relative to active player count
-            const joinedCount = state.players.filter(p => p !== undefined).length;
-            if (joinedCount === 3) {
-                state.bomb.mass = 5 * 1.5;
-            } else if (joinedCount >= 4) {
-                state.bomb.mass = 5 * 2.0;
-            } else {
-                state.bomb.mass = 5;
-            }
+            updateBombMass();
 
             state.camera.x = p1Start.x;
             state.camera.y = p1Start.y;
@@ -404,6 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', state.playerControls[1]);
             UI.show('p2-hud');
             UI.updatePlayerName(1, state.gamepadAssignments[1]);
+            updateBombMass();
             if (!silent) console.log("Player 2 has joined!");
         }
 
@@ -416,6 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.players[2] = createShip(2, p3Start.x, p3Start.y, '#7cfc00', '#00ff00', state.playerControls[2]);
             UI.show('p3-hud');
             UI.updatePlayerName(2, state.gamepadAssignments[2]);
+            updateBombMass();
             if (!silent) console.log("Player 3 has joined!");
         }
 
@@ -428,6 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.players[3] = createShip(3, p4Start.x, p4Start.y, '#00ffff', '#00ffff', state.playerControls[3]);
             UI.show('p4-hud');
             UI.updatePlayerName(3, state.gamepadAssignments[3]);
+            updateBombMass();
             if (!silent) console.log("Player 4 has joined!");
         }
         
@@ -595,6 +589,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        function updateBombMass() {
+            if (!state.bomb) return;
+            const activeCount = state.players.filter(p => p !== undefined).length;
+            if (activeCount === 3) {
+                state.bomb.mass = 5 * 1.5;
+            } else if (activeCount >= 4) {
+                state.bomb.mass = 5 * 2.0;
+            } else {
+                state.bomb.mass = 5;
+            }
+        }
+
         function endGame(message) { if (state.status === 'game_over') return; Sound.playSound('lose', 0.5); Sound.stopAllLoopingSounds(); state.status = 'game_over'; UI.show('message-screen'); UI.get('message-screen').querySelector('h1').textContent = "Game Over"; UI.get('message-screen').querySelector('.instructions').textContent = message; UI.populateLevelSelect(Levels); }
         function togglePause(forcePause = false) { if (state.status === 'playing' || forcePause) { state.status = 'paused'; UI.show('pause-screen'); } else if (state.status === 'paused') { state.status = 'playing'; UI.hide('pause-screen'); UI.hide('help-screen'); UI.hide('options-screen');} }
         function cycleDevMode() { state.devModeState = (state.devModeState + 1) % 3; const hud = UI.get('dev-mode-hud'); switch (state.devModeState) { case 0: UI.hide('dev-mode-hud'); console.log("Dev Mode: OFF"); break; case 1: hud.textContent = "DEV MODE"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Reduced Damage)"); break; case 2: hud.textContent = "DEV MODE (INVULNERABLE)"; UI.show('dev-mode-hud'); console.log("Dev Mode: ON (Invulnerable)"); break; } }
@@ -626,7 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
         function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
         
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, toggleSinglePlayerMode, switchActiveShip, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, addPlayer3, addPlayer4, assignGamepad, getGameState: () => state, getConfig: () => GameConfig };
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, toggleSinglePlayerMode, switchActiveShip, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, addPlayer3, addPlayer4, assignGamepad, updateBombMass, getGameState: () => state, getConfig: () => GameConfig };
     })();
 
 
