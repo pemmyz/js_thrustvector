@@ -2,6 +2,8 @@
     --retro-font: 'Press Start 2P', cursive;
     --p1-color: #f0e68c;
     --p2-color: #dda0dd;
+    --p3-color: #7cfc00;
+    --p4-color: #00ffff;
     --danger-color: #ff4757;
     --safe-color: #7cfc00;
 }
@@ -20,7 +22,6 @@ body {
 }
 
 /* --- MOBILE MODE LOCK --- */
-/* Applied by JS when fullscreen is active */
 body.mobile-mode {
     overflow: hidden; /* Disables scrollbars */
     touch-action: none; /* Disables browser gestures */
@@ -48,7 +49,6 @@ body.mobile-mode {
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.9);
     position: relative;
     overflow: hidden;
-    /* Important for scaling from the middle */
     transform-origin: center center; 
     flex-shrink: 0;
 }
@@ -82,7 +82,6 @@ body.mobile-mode {
     cursor: pointer;
     font-family: var(--retro-font);
 }
-/* Hide the button when in mobile mode */
 body.mobile-mode #mobile-btn { display: none; }
 
 /* --- SINGLE PLAYER SWITCH BUTTON --- */
@@ -107,7 +106,7 @@ body.mobile-mode #switch-player-btn {
     left: 50%;
     transform: translateX(-50%);
     top: auto;
-    bottom: 150px; /* Sits above the mobile controls */
+    bottom: 150px; 
     font-size: 14px;
     padding: 15px 25px;
     border-width: 3px;
@@ -120,14 +119,13 @@ body.mobile-mode #switch-player-btn {
     top: 0; left: 0; width: 100%; height: 100%;
     pointer-events: none;
     z-index: 3000;
-    display: none; /* Hidden by default */
+    display: none; 
     justify-content: space-between;
     align-items: flex-end;
     padding: 20px;
     box-sizing: border-box;
 }
 
-/* Show controls only when in mobile mode */
 body.mobile-mode #mobile-controls {
     display: flex;
 }
@@ -205,11 +203,10 @@ body.mobile-mode #mobile-controls {
 #message-screen h1 { font-size: 2em; color: var(--safe-color); margin-bottom: 20px; }
 #message-screen .instructions { font-size: 0.8em; line-height: 2; }
 #message-screen .small-text { font-size: 0.6em; margin-top: 25px; opacity: 0.7; }
-#level-message-screen { font-size: 2.5em; color: var(--safe-color); text-shadow: 3px 3px 0 #000; }
+#level-message-screen { font-size: 1.5em; color: var(--safe-color); text-shadow: 3px 3px 0 #000; white-space: pre-wrap; line-height: 1.5; }
 #pause-screen h2 { font-size: 2em; color: #fff; }
 #pause-screen p { font-size: 0.8em; }
 
-/* Map Screen Specific Styles */
 #map-screen {
     justify-content: flex-start;
     padding-top: 2em;
@@ -270,15 +267,16 @@ body.mobile-mode #mobile-controls {
     align-items: center;
     justify-content: space-between;
     font-size: 0.9em;
-    padding: 2em;
+    padding: 1.5em;
 }
 #help-screen > div {
     overflow-y: auto;
     max-height: 90%;
     padding-right: 1em;
+    width: 100%;
 }
-#help-screen h2 { font-size: 1.5em; color: var(--safe-color); margin-bottom: 20px; text-align: center; }
-#help-screen p { font-size: 0.8em; line-height: 1.8; max-width: 95%; margin-bottom: 1em; }
+#help-screen h2 { font-size: 1.3em; color: var(--safe-color); margin-bottom: 15px; text-align: center; }
+#help-screen p { font-size: 0.7em; line-height: 1.6; max-width: 95%; margin-bottom: 0.8em; }
 #help-screen p strong { color: var(--p1-color); }
 #close-help-button {
     margin-top: 20px;
@@ -287,43 +285,44 @@ body.mobile-mode #mobile-controls {
 
 /* Rebinding UI Styles */
 #rebinding-ui {
-    margin-top: 30px;
+    margin-top: 20px;
     border-top: 2px dashed #555;
     padding-top: 15px;
 }
 #rebinding-ui h3 {
-    font-size: 1.1em;
+    font-size: 0.9em;
     color: var(--safe-color);
-    margin-bottom: 20px;
+    margin-bottom: 15px;
     text-align: center;
 }
 .rebind-grid {
-    display: flex;
-    justify-content: space-around;
-    gap: 30px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
 }
 .rebind-player-col h4 {
-    font-size: 0.9em;
-    margin-bottom: 15px;
+    font-size: 0.65em;
+    margin-bottom: 10px;
     color: var(--p1-color);
 }
-.rebind-player-col:last-of-type h4 {
-    color: var(--p2-color);
-}
+.rebind-player-col:nth-child(2) h4 { color: var(--p2-color); }
+.rebind-player-col:nth-child(3) h4 { color: var(--p3-color); }
+.rebind-player-col:nth-child(4) h4 { color: var(--p4-color); }
+
 .rebind-row {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    gap: 20px;
-    font-size: 0.8em;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 4px;
+    font-size: 0.55em;
 }
 .rebind-button {
     font-family: var(--retro-font);
-    font-size: 0.7em;
-    min-width: 120px;
+    font-size: 0.85em;
+    min-width: 100%;
     text-align: center;
-    padding: 8px 12px;
+    padding: 6px 4px;
     border-width: 2px;
     color: #ccc;
     border-color: #777;
@@ -373,7 +372,7 @@ button:hover { background-color: var(--safe-color); color: #0d0d1a; border-color
     z-index: 40;
     display: flex;
     gap: 10px;
-    align-items: center; /* Ensures buttons align vertically center with each other */
+    align-items: center; 
 }
 #toggle-help-button, #toggle-options-button, #mute-button, #toggle-pause-button {
     font-size: 0.7em;
@@ -399,7 +398,6 @@ body.mobile-mode #help-button-container {
     width: max-content;
 }
 
-/* --- HIDE BUTTONS & CONTROLS WHEN MENUS ARE OPEN ON MOBILE --- */
 body.mobile-mode.menu-open #help-button-container,
 body.mobile-mode.menu-open #mobile-controls {
     display: none !important;
@@ -414,7 +412,7 @@ body.mobile-mode #toggle-pause-button {
 }
 
 body.mobile-mode #toggle-help-button {
-    font-size: 0px; /* Hides original text dynamically */
+    font-size: 0px; 
 }
 
 body.mobile-mode #toggle-help-button::after {
@@ -423,53 +421,84 @@ body.mobile-mode #toggle-help-button::after {
 }
 
 body.mobile-mode #options-button-footer {
-    padding-bottom: 40px; /* Prevent fixed buttons from covering up interactions */
+    padding-bottom: 40px; 
 }
 
 body.mobile-mode #close-help-button {
     margin-bottom: 40px;
 }
 
-/* HUD */
+/* HUD layout redesigned for 4-player columns */
 #hud {
     position: absolute;
     top: 20px;
     left: 20px;
     right: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 0;
-    box-sizing: border-box;
-    font-size: 0.9em;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px;
+    font-size: 0.65em;
     z-index: 10;
     pointer-events: none;
 }
-.player-hud { text-align: left; }
-#p2-hud { text-align: right; }
-.hud-item { margin-top: 8px; }
-#p1-hud { color: var(--p1-color); text-shadow: 0 0 8px var(--p1-color); }
-#p2-hud { color: var(--p2-color); text-shadow: 0 0 8px var(--p2-color); }
-#bomb-hud { 
-    position: absolute;
-    top: 650px;
-    left: 50%;
-    transform: translateX(-50%);
+
+.hud-left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.hud-right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.hud-center-col {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-start;
+}
+
+.player-hud { 
+    text-align: left; 
+    background-color: rgba(5, 5, 8, 0.75);
+    padding: 6px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hud-right-col .player-hud { 
+    text-align: right; 
+}
+
+.hud-item { margin-top: 4px; }
+
+#p1-hud { color: var(--p1-color); text-shadow: 0 0 6px var(--p1-color); }
+#p2-hud { color: var(--p2-color); text-shadow: 0 0 6px var(--p2-color); }
+#p3-hud { color: var(--p3-color); text-shadow: 0 0 6px var(--p3-color); }
+#p4-hud { color: var(--p4-color); text-shadow: 0 0 6px var(--p4-color); }
+
+#bomb-hud { 
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 1px dashed var(--danger-color);
+    padding: 8px 12px;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
     color: #eee;
 }
+
 #bomb-stability { color: var(--safe-color); }
 
-/* Dev Mode HUD Style */
 #dev-mode-hud {
-    position: absolute;
-    top: 610px; /* Lifted upwards to sit above the bomb HUD and safely above the bottom button bar */
-    left: 50%;
-    transform: translateX(-50%);
+    margin-top: 10px;
     color: var(--p2-color);
     text-shadow: 0 0 8px var(--p2-color);
-    font-size: 0.8em;
+    font-size: 0.9em;
 }

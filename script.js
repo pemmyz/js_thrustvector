@@ -187,12 +187,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- GAME CONFIGURATION ---
     const GameConfig = {
-        // General Settings
         isSplitScreen: true,
         scalingMode: 'new', // 'new' or 'original'
-        isSinglePlayerMode: false, // Tracks Single Player Toggle
+        isSinglePlayerMode: false,
 
-        // Custom Maze Config
         customMaze: {
             name: "Custom Maze",
             procedural: true,
@@ -211,7 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
 
-        // Physics Constants
         physics: {
             GRAVITY: 80,
             THRUST_FORCE: 400,
@@ -229,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-
     // --- GAME MODULE (Main Controller) ---
     const Game = (() => {
         let state = {};
@@ -239,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const initialGameState = {
             level: 0,
-            activePlayerIndex: 0, // Tracks which ship is controlled in SP Mode
+            activePlayerIndex: 0, 
             players: [],
             bomb: null,
             particles: [],
@@ -255,13 +251,18 @@ document.addEventListener('DOMContentLoaded', () => {
             extractionZoneDiscovered: false,
             p1_path: [],
             p2_path: [],
+            p3_path: [],
+            p4_path: [],
+            scores: [0, 0, 0, 0], // Tracks score for P1, P2, P3, P4
             isMapOpen: false,
             mapView: { x: 0, y: 0 },
             playerControls: [
-                { up: 'KeyW', left: 'KeyA', right: 'KeyD', clamp: 'KeyS' },
-                { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', clamp: 'ArrowDown' }
+                { up: 'KeyW', left: 'KeyA', right: 'KeyD', down: 'KeyS', clamp: 'Space' },
+                { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', down: 'ArrowDown', clamp: 'ShiftRight' },
+                { up: 'KeyI', left: 'KeyJ', right: 'KeyL', down: 'KeyK', clamp: 'KeyO' },
+                { up: 'Numpad8', left: 'Numpad4', right: 'Numpad6', down: 'Numpad5', clamp: 'Numpad0' }
             ],
-            gamepadAssignments: [-1, -1] // Player 1 and 2 gamepad indices. -1 = keyboard/unassigned.
+            gamepadAssignments: [-1, -1, -1, -1] 
         };
 
         function init() {
@@ -279,11 +280,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state = JSON.parse(JSON.stringify(initialGameState));
             
-            state.gamepadAssignments = [-1, -1];
+            state.gamepadAssignments = [-1, -1, -1, -1];
             UI.updatePlayerName(0, -1);
             UI.updatePlayerName(1, -1);
+            UI.updatePlayerName(2, -1);
+            UI.updatePlayerName(3, -1);
             UI.hide('p2-hud');
-            
+            UI.hide('p3-hud');
+            UI.hide('p4-hud');
             UI.hide('bomb-hud');
 
             state.devModeState = persistDevMode;
@@ -306,8 +310,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function loadLevel(levelIndex) {
             const oldAssignments = state.gamepadAssignments;
+            const oldScores = state.scores;
+            const persistIsTwoPlayer = state.isTwoPlayer;
+            const persistPlayer3 = state.players[2] !== undefined;
+            const persistPlayer4 = state.players[3] !== undefined;
+
             resetGame();
             state.gamepadAssignments = oldAssignments;
+            state.scores = oldScores;
+            state.isTwoPlayer = persistIsTwoPlayer;
+
             UI.updatePlayerName(0, state.gamepadAssignments[0]);
 
             state.level = levelIndex;
@@ -340,18 +352,34 @@ document.addEventListener('DOMContentLoaded', () => {
             const p1Start = levelData.playerStart;
             state.players[0] = createShip(0, p1Start.x, p1Start.y, '#f0e68c', '#ffff00', state.playerControls[0]);
             
-            if (GameConfig.isSplitScreen || state.gamepadAssignments[1] !== -1 || GameConfig.isSinglePlayerMode) { 
+            if (state.isTwoPlayer || GameConfig.isSplitScreen || state.gamepadAssignments[1] !== -1 || GameConfig.isSinglePlayerMode) { 
                  addPlayer2(true); 
+            }
+            if (persistPlayer3 || state.gamepadAssignments[2] !== -1) {
+                addPlayer3(true);
+            }
+            if (persistPlayer4 || state.gamepadAssignments[3] !== -1) {
+                addPlayer4(true);
             }
             
             const bombStart = levelData.bombStart;
             state.bomb = createBomb(bombStart.x, bombStart.y);
+
+            // Scale bomb mass relative to active player count
+            const joinedCount = state.players.filter(p => p !== undefined).length;
+            if (joinedCount === 3) {
+                state.bomb.mass = 5 * 1.5;
+            } else if (joinedCount >= 4) {
+                state.bomb.mass = 5 * 2.0;
+            } else {
+                state.bomb.mass = 5;
+            }
+
             state.camera.x = p1Start.x;
             state.camera.y = p1Start.y;
             state.camera.zoom = cameraZoom;
             state.mapView = { x: p1Start.x, y: p1Start.y };
 
-            // Show/hide switch button and reset active ship
             if (GameConfig.isSinglePlayerMode) {
                 UI.get('switch-player-btn').classList.remove('hidden');
                 state.activePlayerIndex = 0;
@@ -370,34 +398,59 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.isTwoPlayer && !silent) return;
             state.isTwoPlayer = true;
             const p1 = state.players[0];
-            const p1Start = { x: 500, y: 1900 }; // Fallback
+            const p1Start = { x: 500, y: 1900 }; 
             const shipRadius = 20;
-            const shipDiameter = shipRadius * 2;
-            const totalSeparation = shipDiameter;
-            const p2Start = {x: p1 ? p1.x + totalSeparation : p1Start.x + totalSeparation, y: p1 ? p1.y : p1Start.y};
+            const p2Start = {x: p1 ? p1.x + shipRadius * 2 : p1Start.x + shipRadius * 2, y: p1 ? p1.y : p1Start.y};
             state.players[1] = createShip(1, p2Start.x, p2Start.y, '#dda0dd', '#ff00ff', state.playerControls[1]);
             UI.show('p2-hud');
             UI.updatePlayerName(1, state.gamepadAssignments[1]);
             if (!silent) console.log("Player 2 has joined!");
         }
+
+        function addPlayer3(silent = false) {
+            if (state.players[2] && !silent) return;
+            const p1 = state.players[0];
+            const p1Start = { x: 500, y: 1900 }; 
+            const shipRadius = 20;
+            const p3Start = {x: p1 ? p1.x - shipRadius * 4 : p1Start.x - shipRadius * 4, y: p1 ? p1.y : p1Start.y};
+            state.players[2] = createShip(2, p3Start.x, p3Start.y, '#7cfc00', '#00ff00', state.playerControls[2]);
+            UI.show('p3-hud');
+            UI.updatePlayerName(2, state.gamepadAssignments[2]);
+            if (!silent) console.log("Player 3 has joined!");
+        }
+
+        function addPlayer4(silent = false) {
+            if (state.players[3] && !silent) return;
+            const p1 = state.players[0];
+            const p1Start = { x: 500, y: 1900 }; 
+            const shipRadius = 20;
+            const p4Start = {x: p1 ? p1.x + shipRadius * 4 : p1Start.x + shipRadius * 4, y: p1 ? p1.y : p1Start.y};
+            state.players[3] = createShip(3, p4Start.x, p4Start.y, '#00ffff', '#00ffff', state.playerControls[3]);
+            UI.show('p4-hud');
+            UI.updatePlayerName(3, state.gamepadAssignments[3]);
+            if (!silent) console.log("Player 4 has joined!");
+        }
         
         function assignGamepad(playerIndex, gamepadIndex) {
-            if (playerIndex < 0 || playerIndex > 1) return;
-            const otherPlayer = 1 - playerIndex;
-            if (state.gamepadAssignments[otherPlayer] === gamepadIndex) {
-                state.gamepadAssignments[otherPlayer] = -1;
-                UI.updatePlayerName(otherPlayer, -1);
-            }
+            if (playerIndex < 0 || playerIndex > 3) return;
+            const otherPlayers = [0, 1, 2, 3].filter(idx => idx !== playerIndex);
+            otherPlayers.forEach(idx => {
+                if (state.gamepadAssignments[idx] === gamepadIndex) {
+                    state.gamepadAssignments[idx] = -1;
+                    UI.updatePlayerName(idx, -1);
+                }
+            });
             state.gamepadAssignments[playerIndex] = gamepadIndex;
-            if (playerIndex === 1 && !state.isTwoPlayer && state.status === 'playing') {
-                addPlayer2();
-            }
+            if (playerIndex === 1 && !state.isTwoPlayer && state.status === 'playing') addPlayer2();
+            if (playerIndex === 2 && !state.players[2] && state.status === 'playing') addPlayer3();
+            if (playerIndex === 3 && !state.players[3] && state.status === 'playing') addPlayer4();
+            
             UI.updatePlayerName(playerIndex, gamepadIndex);
             console.log(`Gamepad ${gamepadIndex} assigned to Player ${playerIndex + 1}`);
         }
 
         function createShip(id, x, y, color, glowColor, controls) {
-            return { id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2, radius: 20, health: 100, fuel: 100, mass: 1, isThrusting: false, wantsToClamp: false, isLanded: false, color, glowColor, controls, thrustSoundPlaying: false };
+            return { id, x, y, vx: 0, vy: 0, angle: -Math.PI / 2, radius: 20, health: 100, fuel: 100, mass: 1, isThrusting: false, isBraking: false, wantsToClamp: false, isLanded: false, color, glowColor, controls, thrustSoundPlaying: false };
         }
 
         function createBomb(x, y) { return { id: 'bomb', x, y, vx: 0, vy: 0, radius: 30, mass: 5, stability: 100, harmony: 0, attachedShips: [], isArmed: false, onPedestal: true, humSoundPlaying: false }; }
@@ -422,6 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return; 
             }
             if (state.status === 'playing') {
+                Input.handleMenuInput(state);
                 const actions = Input.getPlayerActions(state);
                 Physics.update(state, actions, deltaTime, GameConfig.physics);
                 updateDiscoveryAndPathfinding(state, timestamp);
@@ -438,6 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const revealRadius = 8;
             state.players.forEach(player => {
+                if (!player) return;
                 const { gx, gy } = worldToGrid(player.x, player.y);
                 for (let y = gy - revealRadius; y <= gy + revealRadius; y++) {
                     for (let x = gx - revealRadius; x <= gx + revealRadius; x++) {
@@ -452,39 +507,54 @@ document.addEventListener('DOMContentLoaded', () => {
             const discoveryRadius = 12;
             if (!state.bombDiscovered) {
                 const bombPos = worldToGrid(state.bomb.x, state.bomb.y);
-                if (state.players.some(p => Math.hypot(worldToGrid(p.x, p.y).gx - bombPos.gx, worldToGrid(p.x, p.y).gy - bombPos.gy) < discoveryRadius)) {
-                    state.bombDiscovered = true;
-                    console.log("Bomb discovered!");
-                }
+                state.players.forEach((p, index) => {
+                    if (p && Math.hypot(worldToGrid(p.x, p.y).gx - bombPos.gx, worldToGrid(p.x, p.y).gy - bombPos.gy) < discoveryRadius) {
+                        state.bombDiscovered = true;
+                        state.scores[index] += 100; 
+                        UI.showLevelMessage(`P${index + 1} DISCOVERED BOMB!\n+100 PTS`, 2000);
+                        console.log(`Bomb discovered by P${index+1}!`);
+                    }
+                });
             }
             if (!state.extractionZoneDiscovered) {
                 const zone = state.levelObjects.find(o => o.type === 'extraction_zone');
                 if (zone) {
                     const zonePos = worldToGrid(zone.x + zone.width / 2, zone.y + zone.height / 2);
-                    if (state.players.some(p => Math.hypot(worldToGrid(p.x, p.y).gx - zonePos.gx, worldToGrid(p.x, p.y).gy - zonePos.gy) < discoveryRadius)) {
-                        state.extractionZoneDiscovered = true;
-                        console.log("Extraction Zone discovered!");
-                    }
+                    state.players.forEach((p, index) => {
+                        if (p && Math.hypot(worldToGrid(p.x, p.y).gx - zonePos.gx, worldToGrid(p.x, p.y).gy - zonePos.gy) < discoveryRadius) {
+                            state.extractionZoneDiscovered = true;
+                            state.scores[index] += 100; 
+                            UI.showLevelMessage(`P${index + 1} DISCOVERED EXIT!\n+100 PTS`, 2000);
+                            console.log(`Extraction Zone discovered by P${index+1}!`);
+                        }
+                    });
                 }
             }
             if (timestamp - lastPathfindTime > 500) {
                 lastPathfindTime = timestamp;
                 let targetPos = null;
                 const zone = state.levelObjects.find(o => o.type === 'extraction_zone');
-                if (state.bomb.attachedShips.length === 2 && state.extractionZoneDiscovered && zone) {
+                const attachedCount = state.bomb.attachedShips.length;
+                const activeCount = state.players.filter(p => p !== undefined).length;
+                if (attachedCount === activeCount && state.extractionZoneDiscovered && zone) {
                     targetPos = worldToGrid(zone.x + zone.width / 2, zone.y + zone.height / 2);
                 } else if (state.bombDiscovered) {
                     targetPos = worldToGrid(state.bomb.x, state.bomb.y);
                 }
                 state.players.forEach((player, index) => {
+                    if (!player) return;
                     if (targetPos) {
                         const startPos = worldToGrid(player.x, player.y);
                         const path = Pathfinder.findPath(state.mapGrid, startPos, targetPos);
                         if (index === 0) state.p1_path = path;
-                        else state.p2_path = path;
+                        else if (index === 1) state.p2_path = path;
+                        else if (index === 2) state.p3_path = path;
+                        else if (index === 3) state.p4_path = path;
                     } else {
                          if (index === 0) state.p1_path = [];
-                         else state.p2_path = [];
+                         else if (index === 1) state.p2_path = [];
+                         else if (index === 2) state.p3_path = [];
+                         else if (index === 3) state.p4_path = [];
                     }
                 });
             }
@@ -502,7 +572,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 Sound.playSound('win', 0.6);
                 Sound.stopAllLoopingSounds();
                 state.status = 'level_complete';
-                UI.showLevelMessage("Success!", 3000, () => {
+                
+                state.bomb.attachedShips.forEach(ship => {
+                    state.scores[ship.id] += 200; 
+                });
+
+                let winMsg = "SUCCESS!\n\nRECAP:\n";
+                state.players.forEach((p, idx) => {
+                    if (p) winMsg += `P${idx + 1}: ${state.scores[idx]} PTS\n`;
+                });
+
+                UI.showLevelMessage(winMsg, 4000, () => {
                     if (state.level + 1 < Levels.length) {
                         loadLevel(state.level + 1);
                     } else {
@@ -510,7 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             }
-            if (state.players.length > 0 && state.players.every(p => p.health <= 0) && state.status !== 'game_over') {
+            if (state.players.length > 0 && state.players.every(p => !p || p.health <= 0) && state.status !== 'game_over') {
                 endGame("All Ships Destroyed!");
             }
         }
@@ -546,10 +626,12 @@ document.addEventListener('DOMContentLoaded', () => {
         function panMap(dx, dy) { const MAP_CELL_SIZE = 8; const scaleFactor = state.gridScale / MAP_CELL_SIZE; state.mapView.x -= dx * scaleFactor; state.mapView.y -= dy * scaleFactor; }
         function rebindKey(playerIndex, action, newKeyCode) { if (playerIndex < state.playerControls.length && state.playerControls[playerIndex][action] !== undefined) { console.log(`Rebinding P${playerIndex+1} ${action} to ${newKeyCode}`); state.playerControls[playerIndex][action] = newKeyCode; } }
         
-        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, toggleSinglePlayerMode, switchActiveShip, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, assignGamepad, getGameState: () => state, getConfig: () => GameConfig };
+        return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, toggleSinglePlayerMode, switchActiveShip, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, addPlayer3, addPlayer4, assignGamepad, getGameState: () => state, getConfig: () => GameConfig };
     })();
 
-    // --- RENDERER MODULE ---
+
+
+// --- RENDERER MODULE ---
     const Renderer = (() => {
         let canvas, ctx, width, height;
         function init() { canvas = document.getElementById('game-canvas'); ctx = canvas.getContext('2d'); resize(); window.addEventListener('resize', resize); return canvas; }
@@ -557,45 +639,101 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawWorld(state) {
             drawLevel(state); drawParticles(state.particles);
             if(state.bomb) drawBomb(state.bomb, state.camera.zoom);
-            state.players.forEach(p => drawShip(p, state.camera.zoom));
+            state.players.forEach(p => { if (p) drawShip(p, state.camera.zoom); });
         }
         function draw(state) {
             ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#050508'; ctx.fillRect(0, 0, width, height);
             if (state.status === 'menu') return;
-            const p1 = state.players[0]; const p2 = state.players[1];
 
-            // Scale UI based on canvas height instead of width to prevent ultrawide distortion
+            const activePlayers = state.players.filter(p => p !== undefined);
+            const numPlayers = activePlayers.length;
+
             const uiScale = height / 720;
-            const mapW = 200 * uiScale;
-            const mapH = 150 * uiScale;
+            const mapW = 160 * uiScale;
+            const mapH = 120 * uiScale;
             const marginX = 10 * uiScale;
             const marginY = 10 * uiScale;
-            const splitMargin = 10 * uiScale; 
 
-            if (Game.getConfig().isSplitScreen && state.isTwoPlayer && p1 && p2) {
+            if (numPlayers >= 3) {
+                // 4-Quadrant Viewport split
+                const qw = width / 2;
+                const qh = height / 2;
+
+                // Q1: Player 1
+                const p1 = state.players[0];
+                if (p1) {
+                    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, qw, qh); ctx.clip();
+                    ctx.translate(qw / 2, qh / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p1.x, -p1.y);
+                    drawWorld(state);
+                    ctx.restore();
+                    drawMinimap(ctx, state, p1, { x: qw - mapW - marginX, y: marginY, w: mapW, h: mapH });
+                }
+
+                // Q2: Player 2
+                const p2 = state.players[1];
+                if (p2) {
+                    ctx.save(); ctx.beginPath(); ctx.rect(qw, 0, qw, qh); ctx.clip();
+                    ctx.translate(qw + qw / 2, qh / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p2.x, -p2.y);
+                    drawWorld(state);
+                    ctx.restore();
+                    drawMinimap(ctx, state, p2, { x: width - mapW - marginX, y: marginY, w: mapW, h: mapH });
+                }
+
+                // Q3: Player 3
+                const p3 = state.players[2];
+                if (p3) {
+                    ctx.save(); ctx.beginPath(); ctx.rect(0, qh, qw, qh); ctx.clip();
+                    ctx.translate(qw / 2, qh + qh / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p3.x, -p3.y);
+                    drawWorld(state);
+                    ctx.restore();
+                    drawMinimap(ctx, state, p3, { x: qw - mapW - marginX, y: qh + marginY, w: mapW, h: mapH });
+                }
+
+                // Q4: Player 4 OR Fog of War Tactical map (if exactly 3 players present)
+                const p4 = state.players[3];
+                if (p4) {
+                    ctx.save(); ctx.beginPath(); ctx.rect(qw, qh, qw, qh); ctx.clip();
+                    ctx.translate(qw + qw / 2, qh + qh / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p4.x, -p4.y);
+                    drawWorld(state);
+                    ctx.restore();
+                    drawMinimap(ctx, state, p4, { x: width - mapW - marginX, y: qh + marginY, w: mapW, h: mapH });
+                } else {
+                    drawQuadrantMap(ctx, state, { x: qw, y: qh, w: qw, h: qh });
+                }
+
+                ctx.strokeStyle = 'white'; 
+                ctx.lineWidth = 4 * uiScale; 
+                ctx.beginPath(); 
+                ctx.moveTo(qw, 0); ctx.lineTo(qw, height);
+                ctx.moveTo(0, qh); ctx.lineTo(width, qh);
+                ctx.stroke();
+
+            } else if (Game.getConfig().isSplitScreen && numPlayers === 2) {
+                const p1 = state.players[0];
+                const p2 = state.players[1];
                 ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width / 2, height); ctx.clip();
                 ctx.translate(width / 4, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p1.x, -p1.y);
                 drawWorld(state);
                 ctx.restore();
-                // Scaled Minimap P1
                 drawMinimap(ctx, state, p1, { x: (width / 2) - mapW - marginX, y: marginY, w: mapW, h: mapH });
                 
                 ctx.save(); ctx.beginPath(); ctx.rect(width / 2, 0, width / 2, height); ctx.clip();
                 ctx.translate(width * 0.75, height / 2); ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-p2.x, -p2.y);
                 drawWorld(state);
                 ctx.restore();
-                // Scaled Minimap P2
-                drawMinimap(ctx, state, p2, { x: (width / 2) + splitMargin, y: marginY, w: mapW, h: mapH });
+                drawMinimap(ctx, state, p2, { x: width - mapW - marginX, y: marginY, w: mapW, h: mapH });
                 
                 ctx.strokeStyle = 'white'; ctx.lineWidth = 4 * uiScale; ctx.beginPath(); ctx.moveTo(width / 2, 0); ctx.lineTo(width / 2, height); ctx.stroke();
-            } else if (p1) {
-                ctx.save(); ctx.translate(width / 2, height / 2);
-                if (state.camera.shake.duration > 0) { const { magnitude } = state.camera.shake; ctx.translate(Math.random() * magnitude - magnitude/2, Math.random() * magnitude - magnitude/2); }
-                ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-state.camera.x, -state.camera.y);
-                drawWorld(state);
-                ctx.restore();
-                // Scaled Minimap Single Player
-                drawMinimap(ctx, state, p1, { x: width - mapW - marginX, y: marginY, w: mapW, h: mapH });
+            } else {
+                const p1 = state.players[0] || state.players.find(p => p !== undefined);
+                if (p1) {
+                    ctx.save(); ctx.translate(width / 2, height / 2);
+                    if (state.camera.shake.duration > 0) { const { magnitude } = state.camera.shake; ctx.translate(Math.random() * magnitude - magnitude/2, Math.random() * magnitude - magnitude/2); }
+                    ctx.scale(state.camera.zoom, state.camera.zoom); ctx.translate(-state.camera.x, -state.camera.y);
+                    drawWorld(state);
+                    ctx.restore();
+                    drawMinimap(ctx, state, p1, { x: width - mapW - marginX, y: marginY, w: mapW, h: mapH });
+                }
             }
         }
         
@@ -627,7 +765,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-            const path = player.id === 0 ? state.p1_path : state.p2_path;
+            
+            let path = [];
+            if (player.id === 0) path = state.p1_path;
+            else if (player.id === 1) path = state.p2_path;
+            else if (player.id === 2) path = state.p3_path;
+            else if (player.id === 3) path = state.p4_path;
+
             if (path.length > 0) {
                 ctx.strokeStyle = 'cyan';
                 ctx.lineWidth = Math.max(1, cellSize * 0.4);
@@ -656,6 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             state.players.forEach(p => {
+                if (!p) return;
                 const relX = (p.x / state.gridScale - pGridX) * cellSize;
                 const relY = (p.y / state.gridScale - pGridY) * cellSize;
                 ctx.fillStyle = p.color;
@@ -663,6 +808,117 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.arc(relX, relY, cellSize * 0.7, 0, Math.PI * 2);
                 ctx.fill();
             });
+            ctx.restore();
+        }
+
+        function drawQuadrantMap(ctx, state, rect) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(rect.x, rect.y, rect.w, rect.h);
+            ctx.clip();
+            
+            ctx.fillStyle = '#05050c';
+            ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+            ctx.lineWidth = 1;
+            const gridSpacing = 30;
+            for (let gx = rect.x; gx < rect.x + rect.w; gx += gridSpacing) {
+                ctx.beginPath(); ctx.moveTo(gx, rect.y); ctx.lineTo(gx, rect.y + rect.h); ctx.stroke();
+            }
+            for (let gy = rect.y; gy < rect.y + rect.h; gy += gridSpacing) {
+                ctx.beginPath(); ctx.moveTo(rect.x, gy); ctx.lineTo(rect.x + rect.w, gy); ctx.stroke();
+            }
+
+            const pad = 25;
+            const playableW = rect.w - pad * 2;
+            const playableH = rect.h - pad * 2;
+            
+            const scaleX = playableW / (state.gridWidth * state.gridScale);
+            const scaleY = playableH / (state.gridHeight * state.gridScale);
+            const mapScale = Math.min(scaleX, scaleY);
+
+            const totalMapW = state.gridWidth * state.gridScale * mapScale;
+            const totalMapH = state.gridHeight * state.gridScale * mapScale;
+            const startX = rect.x + (rect.w - totalMapW) / 2;
+            const startY = rect.y + (rect.h - totalMapH) / 2 + 10;
+
+            const cellSize = state.gridScale * mapScale;
+            for (let y = 0; y < state.gridHeight; y++) {
+                for (let x = 0; x < state.gridWidth; x++) {
+                    if (state.discoveredGrid[y][x]) {
+                        const cellType = state.mapGrid[y][x];
+                        if (cellType === '#') {
+                            ctx.fillStyle = '#2d3e50';
+                            ctx.fillRect(startX + x * cellSize, startY + y * cellSize, cellSize + 0.5, cellSize + 0.5);
+                        } else {
+                            ctx.fillStyle = '#090911';
+                            ctx.fillRect(startX + x * cellSize, startY + y * cellSize, cellSize + 0.5, cellSize + 0.5);
+                        }
+                    }
+                }
+            }
+
+            state.players.forEach((p, index) => {
+                if (p && p.health > 0) {
+                    const px = startX + p.x * mapScale;
+                    const py = startY + p.y * mapScale;
+                    ctx.fillStyle = p.color;
+                    ctx.shadowColor = p.glowColor;
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '7px "Press Start 2P"';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`P${index + 1}`, px, py - 8);
+                }
+            });
+
+            if (state.bombDiscovered && state.bomb) {
+                const bx = startX + state.bomb.x * mapScale;
+                const by = startY + state.bomb.y * mapScale;
+                ctx.fillStyle = '#ff4757';
+                ctx.shadowColor = '#ff4757';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(bx, by, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = '#ff4757';
+                ctx.font = '7px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText('BOMB', bx, by - 10);
+            }
+
+            if (state.extractionZoneDiscovered) {
+                const zone = state.levelObjects.find(o => o.type === 'extraction_zone');
+                if (zone) {
+                    const zx = startX + (zone.x + zone.width / 2) * mapScale;
+                    const zy = startY + (zone.y + zone.height / 2) * mapScale;
+                    ctx.fillStyle = '#7cfc00';
+                    ctx.shadowColor = '#7cfc00';
+                    ctx.shadowBlur = 10;
+                    ctx.beginPath();
+                    ctx.arc(zx, zy, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = '#7cfc00';
+                    ctx.font = '7px "Press Start 2P"';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('EXIT', zx, zy - 10);
+                }
+            }
+
+            ctx.fillStyle = '#00ffff';
+            ctx.font = '8px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.fillText('TACTICAL RADAR (FOG OF WAR)', rect.x + rect.w / 2, rect.y + 25);
             ctx.restore();
         }
 
@@ -717,7 +973,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             ctx.shadowBlur = 0;
             state.players.forEach(p => {
-                if(p.health <= 0) return;
+                if(!p || p.health <= 0) return;
                 const screenX = (p.x - viewX) * scaleFactor;
                 const screenY = (p.y - viewY) * scaleFactor;
                 ctx.fillStyle = p.color;
@@ -734,13 +990,10 @@ document.addEventListener('DOMContentLoaded', () => {
         function drawBomb(bomb, zoom) { ctx.save(); ctx.translate(bomb.x, bomb.y); if(bomb.attachedShips.length > 0) { bomb.attachedShips.forEach(ship => { ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ship.x - bomb.x, ship.y - bomb.y); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 4 / zoom; ctx.stroke(); }); } ctx.shadowColor = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.shadowBlur = (100 - bomb.stability) / 5 / zoom; ctx.beginPath(); ctx.arc(0, 0, bomb.radius, 0, Math.PI * 2); ctx.fillStyle = '#666'; ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.8, 0, Math.PI * 2); ctx.fillStyle = '#444'; ctx.fill(); const blinkRate = bomb.isArmed ? 0.5 : 1.5; if (Math.floor(performance.now() / (500 / blinkRate)) % 2 === 0) { ctx.fillStyle = bomb.isArmed ? 'cyan' : '#ff4757'; ctx.beginPath(); ctx.arc(0, 0, bomb.radius * 0.3, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0; ctx.restore(); }
         function drawParticles(particles) { ctx.globalCompositeOperation = 'lighter'; particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0; ctx.globalCompositeOperation = 'source-over'; }
         
-        // EXPOSE RESIZE for dynamic screen expansion
         return { init, draw, drawPauseOverlay, drawFullMap, resize };
     })();
 
-
-
-// --- PHYSICS MODULE (EULER INTEGRATION) ---
+    // --- PHYSICS MODULE (EULER INTEGRATION) ---
     const Physics = (() => {
         function update(state, actions, dt, config) {
             updateShips(state, actions, dt, config);
@@ -750,11 +1003,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         function updateShips(state, actions, dt, config) {
             state.players.forEach((ship, index) => {
-                if (ship.health <= 0) {
-                    if (ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; }
+                if (!ship || ship.health <= 0) {
+                    if (ship && ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; }
                     return;
                 }
-                const action = index === 0 ? actions.p1 : actions.p2;
+                const action = index === 0 ? actions.p1 : (index === 1 ? actions.p2 : (index === 2 ? actions.p3 : actions.p4));
+                if (!action) return;
+
                 if (ship.isLanded && action.up) { ship.isLanded = false; ship.vy -= 80; }
                 if (ship.isLanded) {
                     const targetAngle = -Math.PI / 2;
@@ -763,17 +1018,42 @@ document.addEventListener('DOMContentLoaded', () => {
                     ship.fuel = Math.min(100, ship.fuel + config.FUEL_REGEN * dt);
                     ship.health = Math.min(100, ship.health + config.FUEL_REGEN * dt);
                 }
+
+                // Snap vertical instantly ONLY if triggered via a gamepad thrust action
+                if (action.up && action.isGamepadUp && !ship.isLanded) {
+                    ship.angle = -Math.PI / 2;
+                }
+
                 ship.isThrusting = !ship.isLanded && action.up && ship.fuel > 0;
-                if (ship.isThrusting && !ship.thrustSoundPlaying) { Sound.startLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = true; }
-                else if (!ship.isThrusting && ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; }
-                if (action.left && !ship.isLanded) ship.angle -= config.ROTATION_SPEED * dt;
-                if (action.right && !ship.isLanded) ship.angle += config.ROTATION_SPEED * dt;
+                ship.isBraking = !ship.isLanded && action.down && ship.fuel > 0;
+
+                const wantsNoise = ship.isThrusting || ship.isBraking;
+                if (wantsNoise && !ship.thrustSoundPlaying) { Sound.startLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = true; }
+                else if (!wantsNoise && ship.thrustSoundPlaying) { Sound.stopLoopingSound(ship, 'thrust'); ship.thrustSoundPlaying = false; }
+                
+                // Allow left and right rotation on keyboard even when accelerating
+                if (action.left && !ship.isLanded && (!action.up || !action.isGamepadUp)) ship.angle -= config.ROTATION_SPEED * dt;
+                if (action.right && !ship.isLanded && (!action.up || !action.isGamepadUp)) ship.angle += config.ROTATION_SPEED * dt;
+                
                 if (ship.isThrusting) {
                     ship.vx += Math.cos(ship.angle) * config.THRUST_FORCE * dt;
                     ship.vy += Math.sin(ship.angle) * config.THRUST_FORCE * dt;
                     if (state.devModeState === 0) { ship.fuel -= config.FUEL_CONSUMPTION * dt; }
                     if(state.particles.length < 300) spawnThrustParticles(state, ship);
                 }
+
+                if (ship.isBraking) {
+                    const speed = Math.hypot(ship.vx, ship.vy);
+                    if (speed > 1) {
+                        const nx = -ship.vx / speed;
+                        const ny = -ship.vy / speed;
+                        ship.vx += nx * config.THRUST_FORCE * dt;
+                        ship.vy += ny * config.THRUST_FORCE * dt;
+                        if (state.particles.length < 300) spawnRetroParticles(state, ship, nx, ny);
+                    }
+                    if (state.devModeState === 0) { ship.fuel -= config.FUEL_CONSUMPTION * dt; }
+                }
+
                 ship.vy += config.GRAVITY * dt;
                 if (state.bomb.attachedShips.includes(ship)) {
                     const bomb = state.bomb;
@@ -796,6 +1076,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleObjectCollisions(ship, state, config);
             });
         }
+        
+        function spawnRetroParticles(state, ship, nx, ny) {
+            const speed = 120;
+            const angle = Math.atan2(-ny, -nx) + (Math.random() - 0.5) * 0.4;
+            state.particles.push({
+                x: ship.x,
+                y: ship.y,
+                vx: ship.vx + Math.cos(angle) * speed,
+                vy: ship.vy + Math.sin(angle) * speed,
+                size: Math.random() * 2 + 1,
+                color: '#ff4757', 
+                life: Math.random() * 0.3 + 0.2,
+                decay: 2.5
+            });
+        }
+
         function updateBomb(state, dt, config) {
             const bomb = state.bomb; if (bomb.onPedestal) return;
             let forceX = 0, forceY = 0;
@@ -819,11 +1115,18 @@ document.addEventListener('DOMContentLoaded', () => {
             bomb.vx *= 0.99; bomb.vy *= 0.99;
             bomb.x += bomb.vx * dt; bomb.y += bomb.vy * dt;
             handleWallCollisions(bomb, state, config);
-            if (bomb.isArmed) {
-                const p1 = bomb.attachedShips[0], p2 = bomb.attachedShips[1];
-                if (!p1 || !p2) return;
-                const angleDiff = Math.abs((((p1.angle - p2.angle) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI);
-                bomb.harmony = (angleDiff < config.HARMONY_ANGLE_THRESHOLD) ? 1 : 0;
+            
+            if (bomb.isArmed && bomb.attachedShips.length >= 2) {
+                let maxDiff = 0;
+                for (let i = 0; i < bomb.attachedShips.length; i++) {
+                    for (let j = i + 1; j < bomb.attachedShips.length; j++) {
+                        const a1 = bomb.attachedShips[i].angle;
+                        const a2 = bomb.attachedShips[j].angle;
+                        const diff = Math.abs((((a1 - a2) % (2*Math.PI)) + (3*Math.PI)) % (2*Math.PI) - Math.PI);
+                        if (diff > maxDiff) maxDiff = diff;
+                    }
+                }
+                bomb.harmony = (maxDiff < config.HARMONY_ANGLE_THRESHOLD) ? 1 : 0;
                 bomb.stability += (bomb.harmony === 1 ? config.BOMB_STABILITY_REGEN : -config.BOMB_STABILITY_DRAIN) * dt;
                 bomb.stability = Math.max(0, Math.min(100, bomb.stability));
             }
@@ -849,8 +1152,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (bomb.attachedShips.length > 0 && !bomb.humSoundPlaying) { Sound.startLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = true; }
             else if (bomb.attachedShips.length === 0 && bomb.humSoundPlaying) { Sound.stopLoopingSound(bomb, 'bomb_hum'); bomb.humSoundPlaying = false; }
-            if (state.isTwoPlayer && bomb.attachedShips.length === 2 && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); }
-            else if (bomb.attachedShips.length < 2 && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); }
+            
+            const activeCount = state.players.filter(p => p !== undefined).length;
+            if (activeCount > 1 && bomb.attachedShips.length === activeCount && !bomb.isArmed) { bomb.isArmed = true; UI.show('bomb-hud'); }
+            else if (bomb.attachedShips.length < activeCount && bomb.isArmed) { bomb.isArmed = false; UI.hide('bomb-hud'); }
         }
         function handleWallCollisions(entity, state, config) {
             const effectiveRadius = entity.radius + config.WALL_HALF_THICKNESS / state.camera.zoom;
@@ -891,9 +1196,9 @@ document.addEventListener('DOMContentLoaded', () => {
         function updateParticles(state, dt) { for (let i = state.particles.length - 1; i >= 0; i--) { const p = state.particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= p.decay * dt; if (p.life <= 0) state.particles.splice(i, 1); } }
         function spawnThrustParticles(state, ship) { const speed = 100; const angle = ship.angle + Math.PI + (Math.random() - 0.5) * 0.5; state.particles.push({ x: ship.x - Math.cos(ship.angle) * ship.radius, y: ship.y - Math.sin(ship.angle) * ship.radius, vx: ship.vx + Math.cos(angle) * speed, vy: ship.vy + Math.sin(angle) * speed, size: Math.random() * 2 + 1, color: ship.glowColor, life: Math.random() * 0.5 + 0.3, decay: 1.5 }); }
         function spawnExplosion(state, x, y, count) { if (count > 10) Sound.playSound('explosion', 0.8); for(let i=0; i<count; i++) { const speed = Math.random() * 800 + 50; const angle = Math.random() * Math.PI * 2; state.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 3 + 2, color: ['#ff0', '#f80', '#f00'][Math.floor(Math.random()*3)], life: Math.random() * 1 + 0.5, decay: 1 }); } }
-        function updateCamera(state, dt) { if (Game.getConfig().isSplitScreen) return; let targetX=0, targetY=0, count = 0; state.players.forEach(p => { if(p.health > 0) { targetX += p.x; targetY += p.y; count++; } }); if (count > 0) { targetX /= count; targetY /= count; } else if (state.bomb) { targetX = state.bomb.x; targetY = state.bomb.y; } state.camera.x += (targetX - state.camera.x) * 0.08; state.camera.y += (targetY - state.camera.y) * 0.08; if (state.camera.shake.duration > 0) state.camera.shake.duration -= dt; }
+        function updateCamera(state, dt) { if (Game.getConfig().isSplitScreen) return; let targetX=0, targetY=0, count = 0; state.players.forEach(p => { if(p && p.health > 0) { targetX += p.x; targetY += p.y; count++; } }); if (count > 0) { targetX /= count; targetY /= count; } else if (state.bomb) { targetX = state.bomb.x; targetY = state.bomb.y; } state.camera.x += (targetX - state.camera.x) * 0.08; state.camera.y += (targetY - state.camera.y) * 0.08; if (state.camera.shake.duration > 0) state.camera.shake.duration -= dt; }
         function isColliding(circle, rect) { const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.width)); const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.height)); const dX = circle.x - closestX; const dY = circle.y - closestY; return (dX * dX + dY * dY) < (circle.radius * circle.radius); }
-        return { update, isColliding, spawnExplosion };
+        return { update, isColliding, spawnExplosion, spawnRetroParticles };
     })();
 
     // --- INPUT MODULE ---
@@ -922,7 +1227,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!e.repeat) { 
                     const state = Game.getGameState(); 
                     if (state.status === 'playing' || state.status === 'paused') { 
-                        // Intercept Clamp and Tab keys for Single Player Mode
                         if (Game.getConfig().isSinglePlayerMode) {
                             if (e.code === 'Tab') {
                                 e.preventDefault();
@@ -932,8 +1236,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
                             }
                         } else {
-                            if (state.players[0] && e.code === state.players[0].controls.clamp) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; } 
-                            if (state.players[1] && e.code === state.players[1].controls.clamp) { state.players[1].wantsToClamp = !state.players[1].wantsToClamp; } 
+                            state.players.forEach(p => {
+                                if (p && e.code === p.controls.clamp) {
+                                    p.wantsToClamp = !p.wantsToClamp;
+                                }
+                            });
                         }
                     } 
                     if (e.code === 'KeyP' && !Game.getGameState().isMapOpen) Game.togglePause(); 
@@ -960,7 +1267,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 delete gamepads[e.gamepad.index];
             });
 
-            // Initialize Mobile Controls Logic
             setupMobileControls();
         }
         
@@ -972,16 +1278,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!mobileLeftBtn) return;
 
-            // Helper to map touch/mouse events to keys
             const addControlListener = (element, keyCode) => {
                 const pressKey = (e) => {
-                    // Prevent default browser zooming/scrolling behavior
                     if(e.cancelable) e.preventDefault(); 
-                    
                     Sound.unlockAudio();
 
-                    // Special logic for Clamp (Toggle behavior)
-                    if (keyCode === 'KeyS') {
+                    if (keyCode === 'Space') {
                         const state = Game.getGameState();
                         if (state.status === 'playing' || state.status === 'paused') {
                             if (Game.getConfig().isSinglePlayerMode) {
@@ -997,29 +1299,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 const releaseKey = (e) => {
                     if(e.cancelable) e.preventDefault();
-                    if (keyCode !== 'KeyS') {
+                    if (keyCode !== 'Space') {
                         keys[keyCode] = false;
                     }
                 };
 
-                // Touch Events
                 element.addEventListener('touchstart', pressKey, { passive: false });
                 element.addEventListener('touchend', releaseKey, { passive: false });
                 element.addEventListener('touchcancel', releaseKey, { passive: false });
-                
-                // Mouse Events (for testing on desktop)
                 element.addEventListener('mousedown', pressKey);
                 element.addEventListener('mouseup', releaseKey);
                 element.addEventListener('mouseleave', (e) => {
-                    if (e.buttons === 1 && keyCode !== 'KeyS') { releaseKey(e); }
+                    if (e.buttons === 1 && keyCode !== 'Space') { releaseKey(e); }
                 });
             };
 
-            // Map Buttons to Player 1 Default Keys
             addControlListener(mobileLeftBtn, 'KeyA'); 
             addControlListener(mobileRightBtn, 'KeyD'); 
             addControlListener(mobileUpBtn, 'KeyW');   
-            addControlListener(mobileClampBtn, 'KeyS');
+            addControlListener(mobileClampBtn, 'Space');
         }
 
         function pollForNewControllers(state) {
@@ -1052,6 +1350,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         Game.assignGamepad(0, pad.index);
                     } else if (state.gamepadAssignments[1] === -1) {
                         Game.assignGamepad(1, pad.index);
+                    } else if (state.gamepadAssignments[2] === -1) {
+                        Game.assignGamepad(2, pad.index);
+                    } else if (state.gamepadAssignments[3] === -1) {
+                        Game.assignGamepad(3, pad.index);
                     }
                 }
             }
@@ -1064,73 +1366,85 @@ document.addEventListener('DOMContentLoaded', () => {
                     UI.updatePlayerName(1, -1);
                 }
             }
+            if (!state.players[2] && keys[state.playerControls[2].up]) {
+                if (state.gamepadAssignments[2] === -1) {
+                    Game.addPlayer3();
+                    UI.updatePlayerName(2, -1);
+                }
+            }
+            if (!state.players[3] && keys[state.playerControls[3].up]) {
+                if (state.gamepadAssignments[3] === -1) {
+                    Game.addPlayer4();
+                    UI.updatePlayerName(3, -1);
+                }
+            }
         }
 
         function getPlayerActions(state) {
-            const actions = { p1: {}, p2: {} };
+            const actions = { p1: {}, p2: {}, p3: {}, p4: {} };
             const DEADZONE = 0.2;
             const THRUST_BUTTON_INDEX = 0;
+            const BRAKE_BUTTON_INDEX = 1; // Face button B for braking
             const CLAMP_BUTTON_INDEX = 13;
             const DPAD_LEFT_INDEX = 14;
             const DPAD_RIGHT_INDEX = 15;
             const ALT_THRUST_BUTTON_INDEX = 7;
             const polledPads = navigator.getGamepads();
             
-            if (state.players[0]) {
-                const c1 = state.playerControls[0];
-                actions.p1 = { up: keys[c1.up], left: keys[c1.left], right: keys[c1.right] };
-                const pad1_index = state.gamepadAssignments[0];
-                if (pad1_index !== -1 && polledPads[pad1_index]) {
-                    const pad1 = polledPads[pad1_index];
-                    const stickX = pad1.axes[0];
-                    if (stickX < -DEADZONE || pad1.buttons[DPAD_LEFT_INDEX].pressed) actions.p1.left = true;
-                    if (stickX > DEADZONE || pad1.buttons[DPAD_RIGHT_INDEX].pressed) actions.p1.right = true;
-                    if (pad1.buttons[THRUST_BUTTON_INDEX].pressed || pad1.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p1.up = true;
-                    const clampPressed = pad1.buttons[CLAMP_BUTTON_INDEX].pressed;
-                    if (clampPressed && !prevButtonStates[pad1_index][CLAMP_BUTTON_INDEX]) {
-                        // Route Gamepad Clamp in Single Player Mode
-                        if (Game.getConfig().isSinglePlayerMode) {
+            for (let i = 0; i < 4; i++) {
+                const ship = state.players[i];
+                if (!ship) continue;
+                const control = state.playerControls[i];
+                const actName = `p${i + 1}`;
+                
+                actions[actName] = { 
+                    up: keys[control.up], 
+                    down: keys[control.down], 
+                    left: keys[control.left], 
+                    right: keys[control.right],
+                    isGamepadUp: false // Default to false (keyboard)
+                };
+
+                const padIndex = state.gamepadAssignments[i];
+                if (padIndex !== -1 && polledPads[padIndex]) {
+                    const pad = polledPads[padIndex];
+                    const stickX = pad.axes[0];
+                    if (stickX < -DEADZONE || pad.buttons[DPAD_LEFT_INDEX].pressed) actions[actName].left = true;
+                    if (stickX > DEADZONE || pad.buttons[DPAD_RIGHT_INDEX].pressed) actions[actName].right = true;
+                    
+                    // Trigger throttle AND flag it as a gamepad source
+                    if (pad.buttons[THRUST_BUTTON_INDEX].pressed || pad.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) {
+                        actions[actName].up = true;
+                        actions[actName].isGamepadUp = true;
+                    }
+                    
+                    if (pad.buttons[BRAKE_BUTTON_INDEX] && pad.buttons[BRAKE_BUTTON_INDEX].pressed) actions[actName].down = true;
+
+                    const clampPressed = pad.buttons[CLAMP_BUTTON_INDEX].pressed;
+                    if (clampPressed && !prevButtonStates[padIndex][CLAMP_BUTTON_INDEX]) {
+                        if (Game.getConfig().isSinglePlayerMode && i === 0) {
                             const activeShip = state.players[state.activePlayerIndex];
                             if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
                         } else {
-                            state.players[0].wantsToClamp = !state.players[0].wantsToClamp;
+                            ship.wantsToClamp = !ship.wantsToClamp;
                         }
                     }
                 }
             }
-            if (state.players[1]) {
-                 const c2 = state.playerControls[1];
-                 actions.p2 = { up: keys[c2.up], left: keys[c2.left], right: keys[c2.right] };
-                 const pad2_index = state.gamepadAssignments[1];
-                 if (pad2_index !== -1 && polledPads[pad2_index]) {
-                     const pad2 = polledPads[pad2_index];
-                     const stickX = pad2.axes[0];
-                     if (stickX < -DEADZONE || pad2.buttons[DPAD_LEFT_INDEX].pressed) actions.p2.left = true;
-                     if (stickX > DEADZONE || pad2.buttons[DPAD_RIGHT_INDEX].pressed) actions.p2.right = true;
-                     if (pad2.buttons[THRUST_BUTTON_INDEX].pressed || pad2.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) actions.p2.up = true;
-                     const clampPressed = pad2.buttons[CLAMP_BUTTON_INDEX].pressed;
-                     if (clampPressed && !prevButtonStates[pad2_index][CLAMP_BUTTON_INDEX]) {
-                         state.players[1].wantsToClamp = !state.players[1].wantsToClamp;
-                     }
-                 }
-            }
 
-            // Override controls if Single Player Mode is active
             if (Game.getConfig().isSinglePlayerMode) {
-                const activeActions = { ...actions.p1 }; // P1 physical inputs always used
+                const activeActions = { ...actions.p1 }; 
                 const bothTied = (state.bomb && state.bomb.attachedShips.length === 2);
                 
                 if (bothTied) {
-                    // Sync both ships to P1's physical inputs for perfect harmony
                     actions.p1 = { ...activeActions };
                     actions.p2 = { ...activeActions };
                 } else {
-                    // Route to active ship, ground the inactive one
                     if (state.activePlayerIndex === 0) {
                         actions.p1 = { ...activeActions };
-                        actions.p2 = { up: false, left: false, right: false };
+                        actions.p2 = { up: false, down: false, left: false, right: false, isGamepadUp: false };
                     } else {
-                        actions.p1 = { up: false, left: false, right: false };
+                        actions.p1 = { up: false, down: false, left: false, right: false, isGamepadUp: false };
                         actions.p2 = { ...activeActions };
                     }
                 }
@@ -1148,7 +1462,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const elements = {};
         const safeColor = '#7cfc00', dangerColor = '#ff4757';
         function init() {
-            const ids = ['screen', 'switch-player-btn', 'p1-hud', 'p2-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p2-fuel', 'p2-health', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'options-content'];
+            const ids = ['screen', 'switch-player-btn', 'p1-hud', 'p2-hud', 'p3-hud', 'p4-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p1-score', 'p2-fuel', 'p2-health', 'p2-score', 'p3-fuel', 'p3-health', 'p3-score', 'p4-fuel', 'p4-health', 'p4-score', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'p3-name', 'p4-name', 'options-content'];
             ids.forEach(id => elements[id] = document.getElementById(id));
             
             elements['switch-player-btn'].addEventListener('click', () => { 
@@ -1165,8 +1479,33 @@ document.addEventListener('DOMContentLoaded', () => {
             populateOptionsMenu();
         }
         function get(id) { return elements[id]; }
-        function update(state) { if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); if (state.bomb && state.bomb.isArmed) { const stability = Math.round(state.bomb.stability); elements['bomb-stability'].textContent = `BOMB: ${stability}%`; elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; } }
-        function updatePlayerHUD(player, prefix) { const fuel = Math.max(0, Math.round(player.fuel)); const health = Math.max(0, Math.round(player.health)); elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; elements[`${prefix}-health`].textContent = `HP: ${health}%`; elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; }
+        
+        function update(state) { 
+            if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); 
+            if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); 
+            if (state.players[2]) updatePlayerHUD(state.players[2], 'p3'); 
+            if (state.players[3]) updatePlayerHUD(state.players[3], 'p4'); 
+            
+            if (state.bomb && state.bomb.isArmed) { 
+                const stability = Math.round(state.bomb.stability); 
+                elements['bomb-stability'].textContent = `BOMB: ${stability}%`; 
+                elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); 
+                const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; 
+                elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; 
+                elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; 
+            } 
+        }
+
+        function updatePlayerHUD(player, prefix) { 
+            const fuel = Math.max(0, Math.round(player.fuel)); 
+            const health = Math.max(0, Math.round(player.health)); 
+            const score = Game.getGameState().scores[player.id] || 0;
+            elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; 
+            elements[`${prefix}-health`].textContent = `HP: ${health}%`; 
+            elements[`${prefix}-score`].textContent = `SCORE: ${score}`;
+            elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; 
+            elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; 
+        }
         
         function show(id) {
             elements[id].classList.remove('hidden');
@@ -1199,13 +1538,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); });
                 levelContainer.appendChild(button);
             });
-             // Add Custom Maze button
             const customButton = document.createElement('button');
             customButton.textContent = "Custom Maze";
-            customButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(-1); }); // -1 indicates custom
+            customButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(-1); }); 
             levelContainer.appendChild(customButton);
 
-            // Add Options button
             const optionsButton = document.createElement('button');
             optionsButton.textContent = "Options";
             optionsButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
@@ -1253,7 +1590,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isHidden = optionsScreen.classList.contains('hidden');
             if (isHidden) {
                 hide('help-screen');
-                populateOptionsMenu(); // Refresh values
+                populateOptionsMenu(); 
                 const gameState = Game.getGameState();
                 if (gameState.status === 'playing') { Game.togglePause(true); }
                 show('options-screen');
@@ -1265,9 +1602,8 @@ document.addEventListener('DOMContentLoaded', () => {
         function populateOptionsMenu() {
             const optionsScreen = elements['options-screen'];
             const container = elements['options-content'];
-            container.innerHTML = ''; // Clear previous content
+            container.innerHTML = ''; 
 
-            // Clear old footer if it exists
             const oldFooter = optionsScreen.querySelector('#options-button-footer');
             if (oldFooter) {
                 oldFooter.remove();
@@ -1317,11 +1653,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return row;
             };
             
-            // --- Custom Maze Settings ---
             container.appendChild(createHeading('Custom Maze Generation'));
             const customConfig = config.customMaze.config;
 
-            // Preset Loader
             const presetRow = document.createElement('div');
             presetRow.className = 'options-row';
             const presetLabel = document.createElement('label');
@@ -1377,7 +1711,6 @@ document.addEventListener('DOMContentLoaded', () => {
             container.appendChild(createSettingInput('Camera Zoom:', customConfig, 'newZoom', 0.1, 1.0, 0.05));
             container.appendChild(createSettingInput('Landing Pads:', customConfig, 'numLandingPads', 0, 20, 1));
             
-            // --- General Settings ---
             container.appendChild(createHeading('General Settings'));
 
             const singlePlayerRow = document.createElement('div');
@@ -1428,7 +1761,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updateScalingButton(scalingButton, config.scalingMode);
             container.appendChild(buttonRow);
             
-            // --- Physics Settings ---
             container.appendChild(createHeading('Physics Parameters'));
             const physicsConfig = config.physics;
             container.appendChild(createSettingInput('Gravity:', physicsConfig, 'GRAVITY', 0, 200, 5));
@@ -1445,7 +1777,6 @@ document.addEventListener('DOMContentLoaded', () => {
             container.appendChild(createSettingInput('Rope Damping:', physicsConfig, 'ROPE_DAMPING', 0, 20, 1));
             container.appendChild(createSettingInput('Wall Thickness:', physicsConfig, 'WALL_HALF_THICKNESS', 1, 20, 0.5));
 
-            // --- Options Footer Buttons ---
             const footer = document.createElement('div');
             footer.id = 'options-button-footer';
 
@@ -1453,7 +1784,7 @@ document.addEventListener('DOMContentLoaded', () => {
             startButton.textContent = 'Start Custom Game';
             startButton.addEventListener('click', () => {
                 Sound.playSound('ui_click', 0.4);
-                Game.startGame(-1); // -1 is the signal for a custom game
+                Game.startGame(-1); 
             });
             footer.appendChild(startButton);
 
@@ -1649,30 +1980,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isFullscreen) {
             const baseHeight = 720;
-            // Calculate screen aspect ratio dynamically
             const screenRatio = window.innerWidth / window.innerHeight;
-            
-            // Expand horizontal resolution dynamically for ultrawide/mobile displays.
-            // Maintains a minimum width of 960 (4:3) so vertical screens don't squish.
             const dynamicWidth = Math.max(960, baseHeight * screenRatio);
             
             screenElement.style.width = `${dynamicWidth}px`;
             screenElement.style.height = `${baseHeight}px`;
 
-            // Calculate scale based entirely on height to flush boundaries to edges
             const scale = window.innerHeight / baseHeight;
             
             screenElement.style.transform = `scale(${scale})`;
-            document.body.classList.add('mobile-mode'); // Activates CSS lock
+            document.body.classList.add('mobile-mode'); 
         } else {
-            // Revert back to fixed 4:3 base logic when out of full screen
             screenElement.style.width = '960px';
             screenElement.style.height = '720px';
             screenElement.style.transform = 'none'; 
             document.body.classList.remove('mobile-mode');
         }
 
-        // Force canvas to adopt the new boundaries to recalculate viewport sizing 
         if (typeof Renderer !== 'undefined' && Renderer.resize) {
             Renderer.resize();
         }
@@ -1689,6 +2013,5 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener("webkitfullscreenchange", scaleGame);
     mobileToggleBtn.addEventListener('click', goFull);
     
-    // Initial scaling check
     scaleGame();
 });

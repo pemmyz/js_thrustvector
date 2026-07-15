@@ -19,22 +19,44 @@
 
             <!-- HUD -->
             <div id="hud">
-                <div class="player-hud" id="p1-hud">
-                    <div id="p1-name">P1 🚀</div>
-                    <div class="hud-item" id="p1-fuel">FUEL: 100%</div>
-                    <div class="hud-item" id="p1-health">HP: 100%</div>
+                <div class="hud-left-col">
+                    <div class="player-hud" id="p1-hud">
+                        <div id="p1-name">P1 🚀</div>
+                        <div class="hud-item" id="p1-fuel">FUEL: 100%</div>
+                        <div class="hud-item" id="p1-health">HP: 100%</div>
+                        <div class="hud-item" id="p1-score">SCORE: 0</div>
+                    </div>
+                    <div class="player-hud hidden" id="p3-hud">
+                        <div id="p3-name">P3 🚀</div>
+                        <div class="hud-item" id="p3-fuel">FUEL: 100%</div>
+                        <div class="hud-item" id="p3-health">HP: 100%</div>
+                        <div class="hud-item" id="p3-score">SCORE: 0</div>
+                    </div>
                 </div>
-                <div id="bomb-hud" class="hidden">
-                    <div class="hud-item" id="harmony-meter">HARMONY: -</div>
-                    <div class="hud-item" id="bomb-stability">BOMB: -</div>
+
+                <div class="hud-center-col">
+                    <div id="bomb-hud" class="hidden">
+                        <div class="hud-item" id="harmony-meter">HARMONY: -</div>
+                        <div class="hud-item" id="bomb-stability">BOMB: -</div>
+                    </div>
+                    <div id="dev-mode-hud" class="hidden">
+                        DEV MODE
+                    </div>
                 </div>
-                <div id="dev-mode-hud" class="hidden">
-                    DEV MODE
-                </div>
-                <div class="player-hud hidden" id="p2-hud">
-                    <div id="p2-name">P2 🚀</div>
-                    <div class="hud-item" id="p2-fuel">FUEL: 100%</div>
-                    <div class="hud-item" id="p2-health">HP: 100%</div>
+
+                <div class="hud-right-col">
+                    <div class="player-hud hidden" id="p2-hud">
+                        <div id="p2-name">P2 🚀</div>
+                        <div class="hud-item" id="p2-fuel">FUEL: 100%</div>
+                        <div class="hud-item" id="p2-health">HP: 100%</div>
+                        <div class="hud-item" id="p2-score">SCORE: 0</div>
+                    </div>
+                    <div class="player-hud hidden" id="p4-hud">
+                        <div id="p4-name">P4 🚀</div>
+                        <div class="hud-item" id="p4-fuel">FUEL: 100%</div>
+                        <div class="hud-item" id="p4-health">HP: 100%</div>
+                        <div class="hud-item" id="p4-score">SCORE: 0</div>
+                    </div>
                 </div>
             </div>
             
@@ -52,7 +74,7 @@
                 <div id="settings-container" class="button-container">
                      <!-- Options button will be added here by JS -->
                 </div>
-                <p class="instructions small-text">P2 presses [↑] or [A]/[X] on a controller to join.</p>
+                <p class="instructions small-text">P2 [↑], P3 [I], or P4 [Numpad8] to join.</p>
             </div>
 
             <!-- In-Game Message Overlay -->
@@ -86,11 +108,10 @@
                 <div> <!-- Wrapper for content -->
                     <h2>How to Play</h2>
                     <p><strong>Objective:</strong> Work together to carry the bomb to the green extraction zone.</p>
-                    <p><strong>Gamepad:</strong> D-Pad/Left Stick to Rotate, [A] Button/Right Trigger to Thrust, D-Pad Down to Clamp.</p>
-                    <p><strong>General:</strong> [P] to Pause, [M] for Map, [H] for Help, [V] for Dev Mode.</p>
-                    <p><strong>Harmony:</strong> Both ships must clamp the bomb to lift it. Fly smoothly and match your partner's angle to keep the bomb stable. Poor harmony or hard impacts will cause it to explode!</p>
-                    <p><strong>Hazards:</strong> Colliding with cave walls will damage your ship. Landing on green pads will repair and refuel you.</p>
-                    <p><strong>Single Player:</strong> Toggle in Options. Use [Tab] or the on-screen button to switch ships. When both clamp the bomb, your controls will pilot both simultaneously.</p>
+                    <p><strong>Up Key [W]:</strong> Snap vertical and thrust upwards immediately.</p>
+                    <p><strong>Down Key [S]:</strong> Fire retro-thrusters opposite to your current travel direction.</p>
+                    <p><strong>Gamepad:</strong> Left Stick to Rotate, [A] Button to Thrust, D-Pad Down to Brake, bumper to clamp.</p>
+                    <p><strong>Harmony:</strong> Match flight angles to keep the bomb stable. Poor harmony or impacts cause stability loss.</p>
 
                     <div id="rebinding-ui">
                         <h3>Controls Rebinding (Keyboard)</h3>
@@ -98,20 +119,37 @@
                             <div class="rebind-player-col">
                                 <h4>Player 1</h4>
                                 <div class="rebind-row"><span>Thrust:</span> <button class="rebind-button" data-player="0" data-action="up">KeyW</button></div>
-                                <div class="rebind-row"><span>Rotate Left:</span> <button class="rebind-button" data-player="0" data-action="left">KeyA</button></div>
-                                <div class="rebind-row"><span>Rotate Right:</span> <button class="rebind-button" data-player="0" data-action="right">KeyD</button></div>
-                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="0" data-action="clamp">KeyS</button></div>
+                                <div class="rebind-row"><span>Brake:</span> <button class="rebind-button" data-player="0" data-action="down">KeyS</button></div>
+                                <div class="rebind-row"><span>Left:</span> <button class="rebind-button" data-player="0" data-action="left">KeyA</button></div>
+                                <div class="rebind-row"><span>Right:</span> <button class="rebind-button" data-player="0" data-action="right">KeyD</button></div>
+                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="0" data-action="clamp">Space</button></div>
                             </div>
                             <div class="rebind-player-col">
                                 <h4>Player 2</h4>
                                 <div class="rebind-row"><span>Thrust:</span> <button class="rebind-button" data-player="1" data-action="up">ArrowUp</button></div>
-                                <div class="rebind-row"><span>Rotate Left:</span> <button class="rebind-button" data-player="1" data-action="left">ArrowLeft</button></div>
-                                <div class="rebind-row"><span>Rotate Right:</span> <button class="rebind-button" data-player="1" data-action="right">ArrowRight</button></div>
-                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="1" data-action="clamp">ArrowDown</button></div>
+                                <div class="rebind-row"><span>Brake:</span> <button class="rebind-button" data-player="1" data-action="down">ArrowDown</button></div>
+                                <div class="rebind-row"><span>Left:</span> <button class="rebind-button" data-player="1" data-action="left">ArrowLeft</button></div>
+                                <div class="rebind-row"><span>Right:</span> <button class="rebind-button" data-player="1" data-action="right">ArrowRight</button></div>
+                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="1" data-action="clamp">ShiftRight</button></div>
+                            </div>
+                            <div class="rebind-player-col">
+                                <h4>Player 3</h4>
+                                <div class="rebind-row"><span>Thrust:</span> <button class="rebind-button" data-player="2" data-action="up">KeyI</button></div>
+                                <div class="rebind-row"><span>Brake:</span> <button class="rebind-button" data-player="2" data-action="down">KeyK</button></div>
+                                <div class="rebind-row"><span>Left:</span> <button class="rebind-button" data-player="2" data-action="left">KeyJ</button></div>
+                                <div class="rebind-row"><span>Right:</span> <button class="rebind-button" data-player="2" data-action="right">KeyL</button></div>
+                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="2" data-action="clamp">KeyO</button></div>
+                            </div>
+                            <div class="rebind-player-col">
+                                <h4>Player 4</h4>
+                                <div class="rebind-row"><span>Thrust:</span> <button class="rebind-button" data-player="3" data-action="up">Numpad8</button></div>
+                                <div class="rebind-row"><span>Brake:</span> <button class="rebind-button" data-player="3" data-action="down">Numpad5</button></div>
+                                <div class="rebind-row"><span>Left:</span> <button class="rebind-button" data-player="3" data-action="left">Numpad4</button></div>
+                                <div class="rebind-row"><span>Right:</span> <button class="rebind-button" data-player="3" data-action="right">Numpad6</button></div>
+                                <div class="rebind-row"><span>Clamp:</span> <button class="rebind-button" data-player="3" data-action="clamp">Numpad0</button></div>
                             </div>
                         </div>
                     </div>
-                    <p style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 2px dashed #555; opacity: 0.8; font-size: 0.8em;">Link to repo: <a href="https://github.com/pemmyz/js_thrustvector" target="_blank" style="color: var(--p1-color);">https://github.com/pemmyz/js_thrustvector</a></p>
                 </div>
                 <button id="close-help-button">Close</button>
             </div>
