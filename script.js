@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
             scores: [0, 0, 0, 0], // Tracks score for P1, P2, P3, P4
             isMapOpen: false,
             mapView: { x: 0, y: 0 },
-playerControls: [
+            playerControls: [
                 { up: 'KeyW', left: 'KeyA', right: 'KeyD', down: 'KeyS', clamp: 'ControlLeft' },
                 { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', down: 'ArrowDown', clamp: 'ControlRight' },
                 { up: 'KeyI', left: 'KeyJ', right: 'KeyL', down: 'KeyK', clamp: 'KeyO' },
@@ -635,9 +635,7 @@ playerControls: [
         return { init, togglePause, cycleDevMode, toggleSplitScreen, toggleScalingMode, toggleSinglePlayerMode, switchActiveShip, endGame, startGame, toggleMap, panMap, rebindKey, addPlayer2, addPlayer3, addPlayer4, assignGamepad, updateBombMass, getGameState: () => state, getConfig: () => GameConfig };
     })();
 
-
-
-// --- RENDERER MODULE ---
+    // --- RENDERER MODULE ---
     const Renderer = (() => {
         let canvas, ctx, width, height;
         function init() { canvas = document.getElementById('game-canvas'); ctx = canvas.getContext('2d'); resize(); window.addEventListener('resize', resize); return canvas; }
@@ -1050,12 +1048,26 @@ playerControls: [
 
                 if (ship.isBraking) {
                     const speed = Math.hypot(ship.vx, ship.vy);
-                    if (speed > 1) {
-                        const nx = -ship.vx / speed;
-                        const ny = -ship.vy / speed;
-                        ship.vx += nx * config.THRUST_FORCE * dt;
-                        ship.vy += ny * config.THRUST_FORCE * dt;
-                        if (state.particles.length < 300) spawnRetroParticles(state, ship, nx, ny);
+                    if (speed > 5) {
+                        // Calculate retrograde angle (opposite of the travel direction vector)
+                        const targetAngle = Math.atan2(-ship.vy, -ship.vx);
+                        
+                        // Automatically steer toward the retrograde angle if there's no active manual steering input
+                        if (!action.left && !action.right) {
+                            ship.angle = lerpAngle(ship.angle, targetAngle, 8 * dt);
+                        }
+                        
+                        // Apply engine thrust along the ship's current angle to decelerate
+                        ship.vx += Math.cos(ship.angle) * config.THRUST_FORCE * dt;
+                        ship.vy += Math.sin(ship.angle) * config.THRUST_FORCE * dt;
+                        
+                        if (state.particles.length < 300) {
+                            spawnThrustParticles(state, ship);
+                        }
+                    } else if (speed > 0) {
+                        // Cleanly halt at near-zero velocities to prevent drift and backward acceleration
+                        ship.vx = 0;
+                        ship.vy = 0;
                     }
                     if (state.devModeState === 0) { ship.fuel -= config.FUEL_CONSUMPTION * dt; }
                 }
@@ -1207,817 +1219,818 @@ playerControls: [
         return { update, isColliding, spawnExplosion, spawnRetroParticles };
     })();
 
-    // --- INPUT MODULE ---
-    const Input = (() => {
-        const keys = {};
-        let isDraggingMap = false;
-        let lastMousePos = { x: 0, y: 0 };
-        const gamepads = {};
-        const prevButtonStates = [{}, {}, {}, {}];
-        let rebindingCallback = null;
-        const FACE_BUTTON_INDICES = [0, 1, 2, 3];
 
-        function init(canvas) { 
-            window.addEventListener('keydown', e => { 
-                Sound.unlockAudio();
-                if (rebindingCallback) {
-                    e.preventDefault();
-                    if (e.code === 'Escape') {
-                        rebindingCallback(null);
-                    } else {
-                        rebindingCallback(e.code);
-                    }
-                    rebindingCallback = null;
-                    return;
+// --- INPUT MODULE ---
+const Input = (() => {
+    const keys = {};
+    let isDraggingMap = false;
+    let lastMousePos = { x: 0, y: 0 };
+    const gamepads = {};
+    const prevButtonStates = [{}, {}, {}, {}];
+    let rebindingCallback = null;
+    const FACE_BUTTON_INDICES = [0, 1, 2, 3];
+
+    function init(canvas) { 
+        window.addEventListener('keydown', e => { 
+            Sound.unlockAudio();
+            if (rebindingCallback) {
+                e.preventDefault();
+                if (e.code === 'Escape') {
+                    rebindingCallback(null);
+                } else {
+                    rebindingCallback(e.code);
                 }
-                if (!e.repeat) { 
-                    const state = Game.getGameState(); 
-                    if (state.status === 'playing' || state.status === 'paused') { 
-                        if (Game.getConfig().isSinglePlayerMode) {
-                            if (e.code === 'Tab') {
-                                e.preventDefault();
-                                Game.switchActiveShip();
-                            } else if (state.players[0] && e.code === state.players[0].controls.clamp) {
-                                const activeShip = state.players[state.activePlayerIndex];
-                                if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
-                            }
-                        } else {
-                            state.players.forEach(p => {
-                                if (p && e.code === p.controls.clamp) {
-                                    p.wantsToClamp = !p.wantsToClamp;
-                                }
-                            });
+                rebindingCallback = null;
+                return;
+            }
+            if (!e.repeat) { 
+                const state = Game.getGameState(); 
+                if (state.status === 'playing' || state.status === 'paused') { 
+                    if (Game.getConfig().isSinglePlayerMode) {
+                        if (e.code === 'Tab') {
+                            e.preventDefault();
+                            Game.switchActiveShip();
+                        } else if (state.players[0] && e.code === state.players[0].controls.clamp) {
+                            const activeShip = state.players[state.activePlayerIndex];
+                            if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
                         }
-                    } 
-                    if (e.code === 'KeyP' && !Game.getGameState().isMapOpen) Game.togglePause(); 
-                    if (e.code === 'KeyH') UI.toggleHelp(); 
-                    if (e.code === 'KeyV') Game.cycleDevMode(); 
-                    if (e.code === 'KeyM') Game.toggleMap();
+                    } else {
+                        state.players.forEach(p => {
+                            if (p && e.code === p.controls.clamp) {
+                                p.wantsToClamp = !p.wantsToClamp;
+                            }
+                        });
+                    }
                 } 
-                keys[e.code] = true; 
-            }); 
-            window.addEventListener('keyup', e => { keys[e.code] = false; }); 
-            canvas.addEventListener('mousedown', e => { Sound.unlockAudio(); if (Game.getGameState().isMapOpen) { isDraggingMap = true; lastMousePos = { x: e.clientX, y: e.clientY }; } });
-            window.addEventListener('mousemove', e => { if (Game.getGameState().isMapOpen && isDraggingMap) { const dx = e.clientX - lastMousePos.x; const dy = e.clientY - lastMousePos.y; Game.panMap(dx, dy); lastMousePos = { x: e.clientX, y: e.clientY }; } });
-            window.addEventListener('mouseup', () => { isDraggingMap = false; });
-            window.addEventListener("gamepadconnected", e => { Sound.unlockAudio(); console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`); gamepads[e.gamepad.index] = e.gamepad; });
-            window.addEventListener("gamepaddisconnected", e => {
-                console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`);
-                const state = Game.getGameState();
-                const playerIndex = state.gamepadAssignments.indexOf(e.gamepad.index);
-                if (playerIndex !== -1) {
-                    state.gamepadAssignments[playerIndex] = -1;
-                    UI.updatePlayerName(playerIndex, -1);
-                    console.log(`Player ${playerIndex + 1} unassigned from controller.`);
-                }
-                delete gamepads[e.gamepad.index];
-            });
-
-            setupMobileControls();
-        }
-        
-        function setupMobileControls() {
-            const mobileLeftBtn = document.getElementById('mobile-left');
-            const mobileRightBtn = document.getElementById('mobile-right');
-            const mobileUpBtn = document.getElementById('mobile-up');
-            const mobileClampBtn = document.getElementById('mobile-clamp');
-
-            if (!mobileLeftBtn) return;
-
-            const addControlListener = (element, keyCode) => {
-                const pressKey = (e) => {
-                    if(e.cancelable) e.preventDefault(); 
-                    Sound.unlockAudio();
-
-                    if (keyCode === 'Space') {
-                        const state = Game.getGameState();
-                        if (state.status === 'playing' || state.status === 'paused') {
-                            if (Game.getConfig().isSinglePlayerMode) {
-                                const activeShip = state.players[state.activePlayerIndex];
-                                if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
-                            } else {
-                                if (state.players[0]) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; }
-                            }
-                        }
-                    } else {
-                        keys[keyCode] = true;
-                    }
-                };
-                const releaseKey = (e) => {
-                    if(e.cancelable) e.preventDefault();
-                    if (keyCode !== 'Space') {
-                        keys[keyCode] = false;
-                    }
-                };
-
-                element.addEventListener('touchstart', pressKey, { passive: false });
-                element.addEventListener('touchend', releaseKey, { passive: false });
-                element.addEventListener('touchcancel', releaseKey, { passive: false });
-                element.addEventListener('mousedown', pressKey);
-                element.addEventListener('mouseup', releaseKey);
-                element.addEventListener('mouseleave', (e) => {
-                    if (e.buttons === 1 && keyCode !== 'Space') { releaseKey(e); }
-                });
-            };
-
-            addControlListener(mobileLeftBtn, 'KeyA'); 
-            addControlListener(mobileRightBtn, 'KeyD'); 
-            addControlListener(mobileUpBtn, 'KeyW');   
-            addControlListener(mobileClampBtn, 'Space');
-        }
-
-        function pollForNewControllers(state) {
-            const polledPads = navigator.getGamepads();
-            for (let i = 0; i < polledPads.length; i++) {
-                const pad = polledPads[i];
-                if (!pad) continue;
-                if (state.gamepadAssignments.includes(pad.index)) {
-                    pad.buttons.forEach((button, index) => {
-                         prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
-                         prevButtonStates[pad.index][index] = button.pressed;
-                    });
-                    continue;
-                }
-                let justPressedJoin = false;
-                for (const buttonIndex of FACE_BUTTON_INDICES) {
-                    const button = pad.buttons[buttonIndex];
-                    if (button) {
-                        prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
-                        const wasPressed = prevButtonStates[pad.index][buttonIndex] || false;
-                        if (button.pressed && !wasPressed) {
-                            justPressedJoin = true;
-                        }
-                        prevButtonStates[pad.index][buttonIndex] = button.pressed;
-                    }
-                }
-                if (justPressedJoin) {
-                    Sound.unlockAudio();
-                    if (state.gamepadAssignments[0] === -1) {
-                        Game.assignGamepad(0, pad.index);
-                    } else if (state.gamepadAssignments[1] === -1) {
-                        Game.assignGamepad(1, pad.index);
-                    } else if (state.gamepadAssignments[2] === -1) {
-                        Game.assignGamepad(2, pad.index);
-                    } else if (state.gamepadAssignments[3] === -1) {
-                        Game.assignGamepad(3, pad.index);
-                    }
-                }
+                if (e.code === 'KeyP' && !Game.getGameState().isMapOpen) Game.togglePause(); 
+                if (e.code === 'KeyH') UI.toggleHelp(); 
+                if (e.code === 'KeyV') Game.cycleDevMode(); 
+                if (e.code === 'KeyM') Game.toggleMap();
+            } 
+            keys[e.code] = true; 
+        }); 
+        window.addEventListener('keyup', e => { keys[e.code] = false; }); 
+        canvas.addEventListener('mousedown', e => { Sound.unlockAudio(); if (Game.getGameState().isMapOpen) { isDraggingMap = true; lastMousePos = { x: e.clientX, y: e.clientY }; } });
+        window.addEventListener('mousemove', e => { if (Game.getGameState().isMapOpen && isDraggingMap) { const dx = e.clientX - lastMousePos.x; const dy = e.clientY - lastMousePos.y; Game.panMap(dx, dy); lastMousePos = { x: e.clientX, y: e.clientY }; } });
+        window.addEventListener('mouseup', () => { isDraggingMap = false; });
+        window.addEventListener("gamepadconnected", e => { Sound.unlockAudio(); console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`); gamepads[e.gamepad.index] = e.gamepad; });
+        window.addEventListener("gamepaddisconnected", e => {
+            console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`);
+            const state = Game.getGameState();
+            const playerIndex = state.gamepadAssignments.indexOf(e.gamepad.index);
+            if (playerIndex !== -1) {
+                state.gamepadAssignments[playerIndex] = -1;
+                UI.updatePlayerName(playerIndex, -1);
+                console.log(`Player ${playerIndex + 1} unassigned from controller.`);
             }
-        }
-        
-        function handleMenuInput(state) {
-             if (!state.isTwoPlayer && keys[state.playerControls[1].up]) {
-                if (state.gamepadAssignments[1] === -1) {
-                    Game.addPlayer2();
-                    UI.updatePlayerName(1, -1);
-                }
-            }
-            if (!state.players[2] && keys[state.playerControls[2].up]) {
-                if (state.gamepadAssignments[2] === -1) {
-                    Game.addPlayer3();
-                    UI.updatePlayerName(2, -1);
-                }
-            }
-            if (!state.players[3] && keys[state.playerControls[3].up]) {
-                if (state.gamepadAssignments[3] === -1) {
-                    Game.addPlayer4();
-                    UI.updatePlayerName(3, -1);
-                }
-            }
-        }
+            delete gamepads[e.gamepad.index];
+        });
 
-        function getPlayerActions(state) {
-            const actions = { p1: {}, p2: {}, p3: {}, p4: {} };
-            const DEADZONE = 0.2;
-            const THRUST_BUTTON_INDEX = 0;
-            const BRAKE_BUTTON_INDEX = 1; // Face button B for braking
-            const CLAMP_BUTTON_INDEX = 13;
-            const DPAD_LEFT_INDEX = 14;
-            const DPAD_RIGHT_INDEX = 15;
-            const ALT_THRUST_BUTTON_INDEX = 7;
-            const polledPads = navigator.getGamepads();
-            
-            for (let i = 0; i < 4; i++) {
-                const ship = state.players[i];
-                if (!ship) continue;
-                const control = state.playerControls[i];
-                const actName = `p${i + 1}`;
-                
-                actions[actName] = { 
-                    up: keys[control.up], 
-                    down: keys[control.down], 
-                    left: keys[control.left], 
-                    right: keys[control.right],
-                    isGamepadUp: false // Default to false (keyboard)
-                };
+        setupMobileControls();
+    }
+    
+    function setupMobileControls() {
+        const mobileLeftBtn = document.getElementById('mobile-left');
+        const mobileRightBtn = document.getElementById('mobile-right');
+        const mobileUpBtn = document.getElementById('mobile-up');
+        const mobileClampBtn = document.getElementById('mobile-clamp');
 
-                const padIndex = state.gamepadAssignments[i];
-                if (padIndex !== -1 && polledPads[padIndex]) {
-                    const pad = polledPads[padIndex];
-                    const stickX = pad.axes[0];
-                    if (stickX < -DEADZONE || pad.buttons[DPAD_LEFT_INDEX].pressed) actions[actName].left = true;
-                    if (stickX > DEADZONE || pad.buttons[DPAD_RIGHT_INDEX].pressed) actions[actName].right = true;
-                    
-                    // Trigger throttle AND flag it as a gamepad source
-                    if (pad.buttons[THRUST_BUTTON_INDEX].pressed || pad.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) {
-                        actions[actName].up = true;
-                        actions[actName].isGamepadUp = true;
-                    }
-                    
-                    if (pad.buttons[BRAKE_BUTTON_INDEX] && pad.buttons[BRAKE_BUTTON_INDEX].pressed) actions[actName].down = true;
+        if (!mobileLeftBtn) return;
 
-                    const clampPressed = pad.buttons[CLAMP_BUTTON_INDEX].pressed;
-                    if (clampPressed && !prevButtonStates[padIndex][CLAMP_BUTTON_INDEX]) {
-                        if (Game.getConfig().isSinglePlayerMode && i === 0) {
+        const addControlListener = (element, keyCode) => {
+            const pressKey = (e) => {
+                if(e.cancelable) e.preventDefault(); 
+                Sound.unlockAudio();
+
+                if (keyCode === 'Space') {
+                    const state = Game.getGameState();
+                    if (state.status === 'playing' || state.status === 'paused') {
+                        if (Game.getConfig().isSinglePlayerMode) {
                             const activeShip = state.players[state.activePlayerIndex];
                             if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
                         } else {
-                            ship.wantsToClamp = !ship.wantsToClamp;
+                            if (state.players[0]) { state.players[0].wantsToClamp = !state.players[0].wantsToClamp; }
                         }
                     }
-                }
-            }
-
-            if (Game.getConfig().isSinglePlayerMode) {
-                const activeActions = { ...actions.p1 }; 
-                const bothTied = (state.bomb && state.bomb.attachedShips.length === 2);
-                
-                if (bothTied) {
-                    actions.p1 = { ...activeActions };
-                    actions.p2 = { ...activeActions };
                 } else {
-                    if (state.activePlayerIndex === 0) {
-                        actions.p1 = { ...activeActions };
-                        actions.p2 = { up: false, down: false, left: false, right: false, isGamepadUp: false };
+                    keys[keyCode] = true;
+                }
+            };
+            const releaseKey = (e) => {
+                if(e.cancelable) e.preventDefault();
+                if (keyCode !== 'Space') {
+                    keys[keyCode] = false;
+                }
+            };
+
+            element.addEventListener('touchstart', pressKey, { passive: false });
+            element.addEventListener('touchend', releaseKey, { passive: false });
+            element.addEventListener('touchcancel', releaseKey, { passive: false });
+            element.addEventListener('mousedown', pressKey);
+            element.addEventListener('mouseup', releaseKey);
+            element.addEventListener('mouseleave', (e) => {
+                if (e.buttons === 1 && keyCode !== 'Space') { releaseKey(e); }
+            });
+        };
+
+        addControlListener(mobileLeftBtn, 'KeyA'); 
+        addControlListener(mobileRightBtn, 'KeyD'); 
+        addControlListener(mobileUpBtn, 'KeyW');   
+        addControlListener(mobileClampBtn, 'Space');
+    }
+
+    function pollForNewControllers(state) {
+        const polledPads = navigator.getGamepads();
+        for (let i = 0; i < polledPads.length; i++) {
+            const pad = polledPads[i];
+            if (!pad) continue;
+            if (state.gamepadAssignments.includes(pad.index)) {
+                pad.buttons.forEach((button, index) => {
+                     prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
+                     prevButtonStates[pad.index][index] = button.pressed;
+                });
+                continue;
+            }
+            let justPressedJoin = false;
+            for (const buttonIndex of FACE_BUTTON_INDICES) {
+                const button = pad.buttons[buttonIndex];
+                if (button) {
+                    prevButtonStates[pad.index] = prevButtonStates[pad.index] || {};
+                    const wasPressed = prevButtonStates[pad.index][buttonIndex] || false;
+                    if (button.pressed && !wasPressed) {
+                        justPressedJoin = true;
+                    }
+                    prevButtonStates[pad.index][buttonIndex] = button.pressed;
+                }
+            }
+            if (justPressedJoin) {
+                Sound.unlockAudio();
+                if (state.gamepadAssignments[0] === -1) {
+                    Game.assignGamepad(0, pad.index);
+                } else if (state.gamepadAssignments[1] === -1) {
+                    Game.assignGamepad(1, pad.index);
+                } else if (state.gamepadAssignments[2] === -1) {
+                    Game.assignGamepad(2, pad.index);
+                } else if (state.gamepadAssignments[3] === -1) {
+                    Game.assignGamepad(3, pad.index);
+                }
+            }
+        }
+    }
+    
+    function handleMenuInput(state) {
+         if (!state.isTwoPlayer && keys[state.playerControls[1].up]) {
+            if (state.gamepadAssignments[1] === -1) {
+                Game.addPlayer2();
+                UI.updatePlayerName(1, -1);
+            }
+        }
+        if (!state.players[2] && keys[state.playerControls[2].up]) {
+            if (state.gamepadAssignments[2] === -1) {
+                Game.addPlayer3();
+                UI.updatePlayerName(2, -1);
+            }
+        }
+        if (!state.players[3] && keys[state.playerControls[3].up]) {
+            if (state.gamepadAssignments[3] === -1) {
+                Game.addPlayer4();
+                UI.updatePlayerName(3, -1);
+            }
+        }
+    }
+
+    function getPlayerActions(state) {
+        const actions = { p1: {}, p2: {}, p3: {}, p4: {} };
+        const DEADZONE = 0.2;
+        const THRUST_BUTTON_INDEX = 0;
+        const BRAKE_BUTTON_INDEX = 1; // Face button B for braking
+        const CLAMP_BUTTON_INDEX = 13;
+        const DPAD_LEFT_INDEX = 14;
+        const DPAD_RIGHT_INDEX = 15;
+        const ALT_THRUST_BUTTON_INDEX = 7;
+        const polledPads = navigator.getGamepads();
+        
+        for (let i = 0; i < 4; i++) {
+            const ship = state.players[i];
+            if (!ship) continue;
+            const control = state.playerControls[i];
+            const actName = `p${i + 1}`;
+            
+            actions[actName] = { 
+                up: keys[control.up], 
+                down: keys[control.down], 
+                left: keys[control.left], 
+                right: keys[control.right],
+                isGamepadUp: false // Default to false (keyboard)
+            };
+
+            const padIndex = state.gamepadAssignments[i];
+            if (padIndex !== -1 && polledPads[padIndex]) {
+                const pad = polledPads[padIndex];
+                const stickX = pad.axes[0];
+                if (stickX < -DEADZONE || pad.buttons[DPAD_LEFT_INDEX].pressed) actions[actName].left = true;
+                if (stickX > DEADZONE || pad.buttons[DPAD_RIGHT_INDEX].pressed) actions[actName].right = true;
+                
+                // Trigger throttle AND flag it as a gamepad source
+                if (pad.buttons[THRUST_BUTTON_INDEX].pressed || pad.buttons[ALT_THRUST_BUTTON_INDEX].value > 0.1) {
+                    actions[actName].up = true;
+                    actions[actName].isGamepadUp = true;
+                }
+                
+                if (pad.buttons[BRAKE_BUTTON_INDEX] && pad.buttons[BRAKE_BUTTON_INDEX].pressed) actions[actName].down = true;
+
+                const clampPressed = pad.buttons[CLAMP_BUTTON_INDEX].pressed;
+                if (clampPressed && !prevButtonStates[padIndex][CLAMP_BUTTON_INDEX]) {
+                    if (Game.getConfig().isSinglePlayerMode && i === 0) {
+                        const activeShip = state.players[state.activePlayerIndex];
+                        if (activeShip) activeShip.wantsToClamp = !activeShip.wantsToClamp;
                     } else {
-                        actions.p1 = { up: false, down: false, left: false, right: false, isGamepadUp: false };
-                        actions.p2 = { ...activeActions };
+                        ship.wantsToClamp = !ship.wantsToClamp;
                     }
                 }
             }
-
-            return actions;
         }
 
-        function listenForNextKey(callback) { rebindingCallback = callback; }
-        return { init, getPlayerActions, listenForNextKey, handleMenuInput, pollForNewControllers };
-    })();
-
-    // --- UI MODULE ---
-    const UI = (() => {
-        const elements = {};
-        const safeColor = '#7cfc00', dangerColor = '#ff4757';
-        function init() {
-            const ids = ['screen', 'switch-player-btn', 'p1-hud', 'p2-hud', 'p3-hud', 'p4-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p1-score', 'p2-fuel', 'p2-health', 'p2-score', 'p3-fuel', 'p3-health', 'p3-score', 'p4-fuel', 'p4-health', 'p4-score', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'p3-name', 'p4-name', 'options-content'];
-            ids.forEach(id => elements[id] = document.getElementById(id));
+        if (Game.getConfig().isSinglePlayerMode) {
+            const activeActions = { ...actions.p1 }; 
+            const bothTied = (state.bomb && state.bomb.attachedShips.length === 2);
             
-            elements['switch-player-btn'].addEventListener('click', () => { 
-                Sound.playSound('ui_click', 0.2); 
-                Game.switchActiveShip(); 
+            if (bothTied) {
+                actions.p1 = { ...activeActions };
+                actions.p2 = { ...activeActions };
+            } else {
+                if (state.activePlayerIndex === 0) {
+                    actions.p1 = { ...activeActions };
+                    actions.p2 = { up: false, down: false, left: false, right: false, isGamepadUp: false };
+                } else {
+                    actions.p1 = { up: false, down: false, left: false, right: false, isGamepadUp: false };
+                    actions.p2 = { ...activeActions };
+                }
+            }
+        }
+
+        return actions;
+    }
+
+    function listenForNextKey(callback) { rebindingCallback = callback; }
+    return { init, getPlayerActions, listenForNextKey, handleMenuInput, pollForNewControllers };
+})();
+
+// --- UI MODULE ---
+const UI = (() => {
+    const elements = {};
+    const safeColor = '#7cfc00', dangerColor = '#ff4757';
+    function init() {
+        const ids = ['screen', 'switch-player-btn', 'p1-hud', 'p2-hud', 'p3-hud', 'p4-hud', 'bomb-hud', 'p1-fuel', 'p1-health', 'p1-score', 'p2-fuel', 'p2-health', 'p2-score', 'p3-fuel', 'p3-health', 'p3-score', 'p4-fuel', 'p4-health', 'p4-score', 'harmony-meter', 'bomb-stability', 'message-screen', 'level-message-screen', 'pause-screen', 'level-select-container', 'help-screen', 'options-screen', 'toggle-help-button', 'toggle-pause-button', 'toggle-options-button', 'close-help-button', 'dev-mode-hud', 'settings-container', 'map-screen', 'rebinding-ui', 'p1-name', 'p2-name', 'p3-name', 'p4-name', 'options-content'];
+        ids.forEach(id => elements[id] = document.getElementById(id));
+        
+        elements['switch-player-btn'].addEventListener('click', () => { 
+            Sound.playSound('ui_click', 0.2); 
+            Game.switchActiveShip(); 
+        });
+
+        elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
+        elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); elements['screen'].classList.remove('help-menu-active'); });
+        elements['toggle-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
+        elements['toggle-pause-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.togglePause(); });
+        elements['rebinding-ui'].addEventListener('click', handleRebindClick);
+        populateRebindingUI();
+        populateOptionsMenu();
+    }
+    function get(id) { return elements[id]; }
+    
+    function update(state) { 
+        if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); 
+        if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); 
+        if (state.players[2]) updatePlayerHUD(state.players[2], 'p3'); 
+        if (state.players[3]) updatePlayerHUD(state.players[3], 'p4'); 
+        
+        if (state.bomb && state.bomb.isArmed) { 
+            const stability = Math.round(state.bomb.stability); 
+            elements['bomb-stability'].textContent = `BOMB: ${stability}%`; 
+            elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); 
+            const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; 
+            elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; 
+            elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; 
+        } 
+    }
+
+    function updatePlayerHUD(player, prefix) { 
+        const fuel = Math.max(0, Math.round(player.fuel)); 
+        const health = Math.max(0, Math.round(player.health)); 
+        const score = Game.getGameState().scores[player.id] || 0;
+        elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; 
+        elements[`${prefix}-health`].textContent = `HP: ${health}%`; 
+        elements[`${prefix}-score`].textContent = `SCORE: ${score}`;
+        elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; 
+        elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; 
+    }
+    
+    function show(id) {
+        elements[id].classList.remove('hidden');
+        if (id === 'help-screen') elements['screen'].classList.add('help-menu-active');
+        if (id === 'options-screen') elements['screen'].classList.add('options-menu-active');
+        
+        if (id === 'help-screen' || id === 'options-screen') {
+            document.body.classList.add('menu-open');
+        }
+    }
+    function hide(id) {
+        elements[id].classList.add('hidden');
+        if (id === 'help-screen') elements['screen'].classList.remove('help-menu-active');
+        if (id === 'options-screen') elements['screen'].classList.remove('options-menu-active');
+        
+        if (elements['help-screen']?.classList.contains('hidden') && elements['options-screen']?.classList.contains('hidden')) {
+            document.body.classList.remove('menu-open');
+        }
+    }
+
+    function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
+    function populateLevelSelect(levels) {
+        const levelContainer = elements['level-select-container'];
+        const settingsContainer = elements['settings-container'];
+        levelContainer.innerHTML = ''; settingsContainer.innerHTML = '';
+        
+        levels.forEach((level, index) => {
+            const button = document.createElement('button');
+            button.textContent = level.name;
+            button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); });
+            levelContainer.appendChild(button);
+        });
+        const customButton = document.createElement('button');
+        customButton.textContent = "Custom Maze";
+        customButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(-1); }); 
+        levelContainer.appendChild(customButton);
+
+        const optionsButton = document.createElement('button');
+        optionsButton.textContent = "Options";
+        optionsButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
+        settingsContainer.appendChild(optionsButton);
+
+        populateRebindingUI();
+    }
+    
+    function updateSplitScreenButton(button, isSplitScreen) {
+         if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; }
+    }
+    function updateScalingButton(button, scalingMode) {
+        if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; }
+    }
+    function updateSwitchButton(activeIndex) {
+        const btn = elements['switch-player-btn'];
+        if (!btn) return;
+        if (activeIndex === 0) {
+            btn.textContent = "Switch to P2 (Tab)";
+            btn.style.borderColor = "var(--p2-color)";
+            btn.style.color = "var(--p2-color)";
+        } else {
+            btn.textContent = "Switch to P1 (Tab)";
+            btn.style.borderColor = "var(--p1-color)";
+            btn.style.color = "var(--p1-color)";
+        }
+    }
+    
+    function toggleHelp() {
+        const helpScreen = elements['help-screen'];
+        const isHidden = helpScreen.classList.contains('hidden');
+        if (isHidden) {
+            hide('options-screen');
+            populateRebindingUI();
+            const gameState = Game.getGameState();
+            if (gameState.status === 'playing') { Game.togglePause(true); }
+            show('help-screen');
+        } else {
+            hide('help-screen');
+        }
+    }
+
+    function toggleOptions() {
+        const optionsScreen = elements['options-screen'];
+        const isHidden = optionsScreen.classList.contains('hidden');
+        if (isHidden) {
+            hide('help-screen');
+            populateOptionsMenu(); 
+            const gameState = Game.getGameState();
+            if (gameState.status === 'playing') { Game.togglePause(true); }
+            show('options-screen');
+        } else {
+            hide('options-screen');
+        }
+    }
+
+    function populateOptionsMenu() {
+        const optionsScreen = elements['options-screen'];
+        const container = elements['options-content'];
+        container.innerHTML = ''; 
+
+        const oldFooter = optionsScreen.querySelector('#options-button-footer');
+        if (oldFooter) {
+            oldFooter.remove();
+        }
+
+        const config = Game.getConfig();
+
+        const createHeading = (text) => {
+            const h3 = document.createElement('h3');
+            h3.textContent = text;
+            return h3;
+        };
+
+        const createSettingInput = (label, obj, key, min, max, step) => {
+            const row = document.createElement('div');
+            row.className = 'options-row';
+            
+            const labelEl = document.createElement('label');
+            labelEl.textContent = label;
+            row.appendChild(labelEl);
+
+            const range = document.createElement('input');
+            range.type = 'range';
+            range.min = min;
+            range.max = max;
+            range.step = step;
+            range.value = obj[key];
+            row.appendChild(range);
+
+            const numberInput = document.createElement('input');
+            numberInput.type = 'number';
+            numberInput.min = min;
+            numberInput.max = max;
+            numberInput.step = step;
+            numberInput.value = obj[key];
+            row.appendChild(numberInput);
+            
+            range.addEventListener('input', () => {
+                obj[key] = parseFloat(range.value);
+                numberInput.value = range.value;
+            });
+            numberInput.addEventListener('input', () => {
+                obj[key] = parseFloat(numberInput.value);
+                range.value = numberInput.value;
             });
 
-            elements['toggle-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleHelp(); });
-            elements['close-help-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); hide('help-screen'); elements['screen'].classList.remove('help-menu-active'); });
-            elements['toggle-options-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
-            elements['toggle-pause-button'].addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.togglePause(); });
-            elements['rebinding-ui'].addEventListener('click', handleRebindClick);
-            populateRebindingUI();
+            return row;
+        };
+        
+        container.appendChild(createHeading('Custom Maze Generation'));
+        const customConfig = config.customMaze.config;
+
+        const presetRow = document.createElement('div');
+        presetRow.className = 'options-row';
+        const presetLabel = document.createElement('label');
+        presetLabel.textContent = 'Load Preset:';
+        presetRow.appendChild(presetLabel);
+
+        const presetSelect = document.createElement('select');
+        const defaultOption = document.createElement('option');
+        defaultOption.textContent = '-- Select a Preset --';
+        defaultOption.value = -1;
+        presetSelect.appendChild(defaultOption);
+
+        Levels.forEach((level, index) => {
+            if (level.procedural) {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = level.name;
+                presetSelect.appendChild(option);
+            }
+        });
+        presetSelect.addEventListener('change', (e) => {
+            const selectedIndex = parseInt(e.target.value, 10);
+            if (selectedIndex === -1) return;
+
+            const presetConf = Levels[selectedIndex].config;
+            const targetConf = Game.getConfig().customMaze.config;
+            
+            Object.keys(targetConf).forEach(key => {
+                if (presetConf[key] !== undefined) {
+                    targetConf[key] = presetConf[key];
+                }
+            });
+
             populateOptionsMenu();
-        }
-        function get(id) { return elements[id]; }
+        });
+        presetRow.appendChild(presetSelect);
+        container.appendChild(presetRow);
         
-        function update(state) { 
-            if (state.players[0]) updatePlayerHUD(state.players[0], 'p1'); 
-            if (state.players[1]) updatePlayerHUD(state.players[1], 'p2'); 
-            if (state.players[2]) updatePlayerHUD(state.players[2], 'p3'); 
-            if (state.players[3]) updatePlayerHUD(state.players[3], 'p4'); 
-            
-            if (state.bomb && state.bomb.isArmed) { 
-                const stability = Math.round(state.bomb.stability); 
-                elements['bomb-stability'].textContent = `BOMB: ${stability}%`; 
-                elements['bomb-stability'].style.color = stability > 50 ? safeColor : (stability > 25 ? '#f0e68c' : dangerColor); 
-                const harmonyText = state.bomb.harmony === 1 ? 'GOOD' : 'POOR'; 
-                elements['harmony-meter'].textContent = `HARMONY: ${harmonyText}`; 
-                elements['harmony-meter'].style.color = state.bomb.harmony === 1 ? safeColor : dangerColor; 
-            } 
-        }
+        const typeRow = document.createElement('div');
+        typeRow.className = 'options-row';
+        typeRow.innerHTML = `<label>Generator Type:</label><select id="gen-type"><option value="maze">Maze</option><option value="cavern">Cavern</option></select><span></span>`;
+        container.appendChild(typeRow);
+        const genTypeSelect = typeRow.querySelector('#gen-type');
+        genTypeSelect.value = customConfig.generatorType;
+        genTypeSelect.addEventListener('change', () => { customConfig.generatorType = genTypeSelect.value; });
 
-        function updatePlayerHUD(player, prefix) { 
-            const fuel = Math.max(0, Math.round(player.fuel)); 
-            const health = Math.max(0, Math.round(player.health)); 
-            const score = Game.getGameState().scores[player.id] || 0;
-            elements[`${prefix}-fuel`].textContent = `FUEL: ${fuel}%`; 
-            elements[`${prefix}-health`].textContent = `HP: ${health}%`; 
-            elements[`${prefix}-score`].textContent = `SCORE: ${score}`;
-            elements[`${prefix}-fuel`].style.color = fuel > 25 ? '' : dangerColor; 
-            elements[`${prefix}-health`].style.color = health > 25 ? '' : dangerColor; 
-        }
+        container.appendChild(createSettingInput('Width:', customConfig, 'width', 20, 200, 1));
+        container.appendChild(createSettingInput('Height:', customConfig, 'height', 20, 200, 1));
+        container.appendChild(createSettingInput('Max Rooms:', customConfig, 'maxRooms', 5, 100, 1));
+        container.appendChild(createSettingInput('Room Min Size:', customConfig, 'roomMinSize', 4, 20, 1));
+        container.appendChild(createSettingInput('Room Max Size:', customConfig, 'roomMaxSize', 5, 25, 1));
+        container.appendChild(createSettingInput('Cell Size (Scale):', customConfig, 'newScale', 20, 200, 5));
+        container.appendChild(createSettingInput('Camera Zoom:', customConfig, 'newZoom', 0.1, 1.0, 0.05));
+        container.appendChild(createSettingInput('Landing Pads:', customConfig, 'numLandingPads', 0, 20, 1));
         
-        function show(id) {
-            elements[id].classList.remove('hidden');
-            if (id === 'help-screen') elements['screen'].classList.add('help-menu-active');
-            if (id === 'options-screen') elements['screen'].classList.add('options-menu-active');
-            
-            if (id === 'help-screen' || id === 'options-screen') {
-                document.body.classList.add('menu-open');
-            }
-        }
-        function hide(id) {
-            elements[id].classList.add('hidden');
-            if (id === 'help-screen') elements['screen'].classList.remove('help-menu-active');
-            if (id === 'options-screen') elements['screen'].classList.remove('options-menu-active');
-            
-            if (elements['help-screen']?.classList.contains('hidden') && elements['options-screen']?.classList.contains('hidden')) {
-                document.body.classList.remove('menu-open');
-            }
-        }
+        container.appendChild(createHeading('General Settings'));
 
-        function showLevelMessage(text, duration, callback) { elements['level-message-screen'].textContent = text; show('level-message-screen'); setTimeout(() => { hide('level-message-screen'); if (callback) callback(); }, duration); }
-        function populateLevelSelect(levels) {
-            const levelContainer = elements['level-select-container'];
-            const settingsContainer = elements['settings-container'];
-            levelContainer.innerHTML = ''; settingsContainer.innerHTML = '';
-            
-            levels.forEach((level, index) => {
-                const button = document.createElement('button');
-                button.textContent = level.name;
-                button.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(index); });
-                levelContainer.appendChild(button);
-            });
-            const customButton = document.createElement('button');
-            customButton.textContent = "Custom Maze";
-            customButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.4); Game.startGame(-1); }); 
-            levelContainer.appendChild(customButton);
+        const singlePlayerRow = document.createElement('div');
+        singlePlayerRow.className = 'options-button-row';
+        const spButton = document.createElement('button');
+        const updateSPText = () => {
+            spButton.textContent = `Gameplay: ${config.isSinglePlayerMode ? 'Single Player' : 'Co-op'}`;
+        };
+        updateSPText();
+        spButton.addEventListener('click', () => { 
+            Sound.playSound('ui_click', 0.2); 
+            Game.toggleSinglePlayerMode(); 
+            updateSPText(); 
+        });
+        singlePlayerRow.appendChild(spButton);
+        container.appendChild(singlePlayerRow);
 
-            const optionsButton = document.createElement('button');
-            optionsButton.textContent = "Options";
-            optionsButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); toggleOptions(); });
-            settingsContainer.appendChild(optionsButton);
-
-            populateRebindingUI();
-        }
-        
-        function updateSplitScreenButton(button, isSplitScreen) {
-             if (button) { button.textContent = `Mode: ${isSplitScreen ? 'Split-Screen' : 'Shared Screen'}`; }
-        }
-        function updateScalingButton(button, scalingMode) {
-            if (button) { const modeText = scalingMode.charAt(0).toUpperCase() + scalingMode.slice(1); button.textContent = `Map Scale: ${modeText}`; }
-        }
-        function updateSwitchButton(activeIndex) {
-            const btn = elements['switch-player-btn'];
-            if (!btn) return;
-            if (activeIndex === 0) {
-                btn.textContent = "Switch to P2 (Tab)";
-                btn.style.borderColor = "var(--p2-color)";
-                btn.style.color = "var(--p2-color)";
-            } else {
-                btn.textContent = "Switch to P1 (Tab)";
-                btn.style.borderColor = "var(--p1-color)";
-                btn.style.color = "var(--p1-color)";
-            }
-        }
-        
-        function toggleHelp() {
-            const helpScreen = elements['help-screen'];
-            const isHidden = helpScreen.classList.contains('hidden');
-            if (isHidden) {
-                hide('options-screen');
-                populateRebindingUI();
-                const gameState = Game.getGameState();
-                if (gameState.status === 'playing') { Game.togglePause(true); }
-                show('help-screen');
-            } else {
-                hide('help-screen');
-            }
-        }
-
-        function toggleOptions() {
-            const optionsScreen = elements['options-screen'];
-            const isHidden = optionsScreen.classList.contains('hidden');
-            if (isHidden) {
-                hide('help-screen');
-                populateOptionsMenu(); 
-                const gameState = Game.getGameState();
-                if (gameState.status === 'playing') { Game.togglePause(true); }
-                show('options-screen');
-            } else {
-                hide('options-screen');
-            }
-        }
-
-        function populateOptionsMenu() {
-            const optionsScreen = elements['options-screen'];
-            const container = elements['options-content'];
-            container.innerHTML = ''; 
-
-            const oldFooter = optionsScreen.querySelector('#options-button-footer');
-            if (oldFooter) {
-                oldFooter.remove();
-            }
-
-            const config = Game.getConfig();
-
-            const createHeading = (text) => {
-                const h3 = document.createElement('h3');
-                h3.textContent = text;
-                return h3;
-            };
-
-            const createSettingInput = (label, obj, key, min, max, step) => {
-                const row = document.createElement('div');
-                row.className = 'options-row';
-                
-                const labelEl = document.createElement('label');
-                labelEl.textContent = label;
-                row.appendChild(labelEl);
-
-                const range = document.createElement('input');
-                range.type = 'range';
-                range.min = min;
-                range.max = max;
-                range.step = step;
-                range.value = obj[key];
-                row.appendChild(range);
-
-                const numberInput = document.createElement('input');
-                numberInput.type = 'number';
-                numberInput.min = min;
-                numberInput.max = max;
-                numberInput.step = step;
-                numberInput.value = obj[key];
-                row.appendChild(numberInput);
-                
-                range.addEventListener('input', () => {
-                    obj[key] = parseFloat(range.value);
-                    numberInput.value = range.value;
-                });
-                numberInput.addEventListener('input', () => {
-                    obj[key] = parseFloat(numberInput.value);
-                    range.value = numberInput.value;
-                });
-
-                return row;
-            };
-            
-            container.appendChild(createHeading('Custom Maze Generation'));
-            const customConfig = config.customMaze.config;
-
-            const presetRow = document.createElement('div');
-            presetRow.className = 'options-row';
-            const presetLabel = document.createElement('label');
-            presetLabel.textContent = 'Load Preset:';
-            presetRow.appendChild(presetLabel);
-
-            const presetSelect = document.createElement('select');
-            const defaultOption = document.createElement('option');
-            defaultOption.textContent = '-- Select a Preset --';
-            defaultOption.value = -1;
-            presetSelect.appendChild(defaultOption);
-
-            Levels.forEach((level, index) => {
-                if (level.procedural) {
-                    const option = document.createElement('option');
-                    option.value = index;
-                    option.textContent = level.name;
-                    presetSelect.appendChild(option);
-                }
-            });
-            presetSelect.addEventListener('change', (e) => {
-                const selectedIndex = parseInt(e.target.value, 10);
-                if (selectedIndex === -1) return;
-
-                const presetConf = Levels[selectedIndex].config;
-                const targetConf = Game.getConfig().customMaze.config;
-                
-                Object.keys(targetConf).forEach(key => {
-                    if (presetConf[key] !== undefined) {
-                        targetConf[key] = presetConf[key];
-                    }
-                });
-
-                populateOptionsMenu();
-            });
-            presetRow.appendChild(presetSelect);
-            container.appendChild(presetRow);
-            
-            const typeRow = document.createElement('div');
-            typeRow.className = 'options-row';
-            typeRow.innerHTML = `<label>Generator Type:</label><select id="gen-type"><option value="maze">Maze</option><option value="cavern">Cavern</option></select><span></span>`;
-            container.appendChild(typeRow);
-            const genTypeSelect = typeRow.querySelector('#gen-type');
-            genTypeSelect.value = customConfig.generatorType;
-            genTypeSelect.addEventListener('change', () => { customConfig.generatorType = genTypeSelect.value; });
-
-            container.appendChild(createSettingInput('Width:', customConfig, 'width', 20, 200, 1));
-            container.appendChild(createSettingInput('Height:', customConfig, 'height', 20, 200, 1));
-            container.appendChild(createSettingInput('Max Rooms:', customConfig, 'maxRooms', 5, 100, 1));
-            container.appendChild(createSettingInput('Room Min Size:', customConfig, 'roomMinSize', 4, 20, 1));
-            container.appendChild(createSettingInput('Room Max Size:', customConfig, 'roomMaxSize', 5, 25, 1));
-            container.appendChild(createSettingInput('Cell Size (Scale):', customConfig, 'newScale', 20, 200, 5));
-            container.appendChild(createSettingInput('Camera Zoom:', customConfig, 'newZoom', 0.1, 1.0, 0.05));
-            container.appendChild(createSettingInput('Landing Pads:', customConfig, 'numLandingPads', 0, 20, 1));
-            
-            container.appendChild(createHeading('General Settings'));
-
-            const singlePlayerRow = document.createElement('div');
-            singlePlayerRow.className = 'options-button-row';
-            const spButton = document.createElement('button');
-            const updateSPText = () => {
-                spButton.textContent = `Gameplay: ${config.isSinglePlayerMode ? 'Single Player' : 'Co-op'}`;
-            };
-            updateSPText();
-            spButton.addEventListener('click', () => { 
-                Sound.playSound('ui_click', 0.2); 
-                Game.toggleSinglePlayerMode(); 
-                updateSPText(); 
-            });
-            singlePlayerRow.appendChild(spButton);
-            container.appendChild(singlePlayerRow);
-
-            const devModeRow = document.createElement('div');
-            devModeRow.className = 'options-button-row';
-            const devModeBtn = document.createElement('button');
-            const updateDevText = () => {
-                const state = Game.getGameState();
-                if(state.devModeState === 0) devModeBtn.textContent = 'Dev Mode: OFF';
-                else if(state.devModeState === 1) devModeBtn.textContent = 'Dev Mode: Reduced Damage';
-                else devModeBtn.textContent = 'Dev Mode: Invulnerable';
-            };
+        const devModeRow = document.createElement('div');
+        devModeRow.className = 'options-button-row';
+        const devModeBtn = document.createElement('button');
+        const updateDevText = () => {
+            const state = Game.getGameState();
+            if(state.devModeState === 0) devModeBtn.textContent = 'Dev Mode: OFF';
+            else if(state.devModeState === 1) devModeBtn.textContent = 'Dev Mode: Reduced Damage';
+            else devModeBtn.textContent = 'Dev Mode: Invulnerable';
+        };
+        updateDevText();
+        devModeBtn.addEventListener('click', () => {
+            Sound.playSound('ui_click', 0.2);
+            Game.cycleDevMode();
             updateDevText();
-            devModeBtn.addEventListener('click', () => {
-                Sound.playSound('ui_click', 0.2);
-                Game.cycleDevMode();
-                updateDevText();
-            });
-            devModeRow.appendChild(devModeBtn);
-            container.appendChild(devModeRow);
+        });
+        devModeRow.appendChild(devModeBtn);
+        container.appendChild(devModeRow);
 
-            const buttonRow = document.createElement('div');
-            buttonRow.className = 'options-button-row';
-            const splitScreenButton = document.createElement('button');
-            splitScreenButton.id = 'toggle-split-screen-button';
-            splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); });
-            buttonRow.appendChild(splitScreenButton);
-            updateSplitScreenButton(splitScreenButton, config.isSplitScreen);
-            
-            const scalingButton = document.createElement('button');
-            scalingButton.id = 'toggle-scaling-button';
-            scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); });
-            buttonRow.appendChild(scalingButton);
-            updateScalingButton(scalingButton, config.scalingMode);
-            container.appendChild(buttonRow);
-            
-            container.appendChild(createHeading('Physics Parameters'));
-            const physicsConfig = config.physics;
-            container.appendChild(createSettingInput('Gravity:', physicsConfig, 'GRAVITY', 0, 200, 5));
-            container.appendChild(createSettingInput('Thrust Force:', physicsConfig, 'THRUST_FORCE', 100, 1000, 10));
-            container.appendChild(createSettingInput('Rotation Speed:', physicsConfig, 'ROTATION_SPEED', 1, 10, 0.1));
-            container.appendChild(createSettingInput('Fuel Consumption:', physicsConfig, 'FUEL_CONSUMPTION', 0, 50, 1));
-            container.appendChild(createSettingInput('Fuel Regen:', physicsConfig, 'FUEL_REGEN', 0, 50, 1));
-            container.appendChild(createSettingInput('Collision Damage:', physicsConfig, 'DAMAGE_ON_COLLISION', 0, 100, 5));
-            container.appendChild(createSettingInput('Bomb Drain:', physicsConfig, 'BOMB_STABILITY_DRAIN', 0, 20, 0.5));
-            container.appendChild(createSettingInput('Bomb Regen:', physicsConfig, 'BOMB_STABILITY_REGEN', 0, 20, 0.5));
-            container.appendChild(createSettingInput('Harmony Angle:', physicsConfig, 'HARMONY_ANGLE_THRESHOLD', 0.1, 1.5, 0.05));
-            container.appendChild(createSettingInput('Rope Length:', physicsConfig, 'ROPE_LENGTH', 50, 200, 5));
-            container.appendChild(createSettingInput('Rope Stiffness:', physicsConfig, 'ROPE_STIFFNESS', 20, 300, 10));
-            container.appendChild(createSettingInput('Rope Damping:', physicsConfig, 'ROPE_DAMPING', 0, 20, 1));
-            container.appendChild(createSettingInput('Wall Thickness:', physicsConfig, 'WALL_HALF_THICKNESS', 1, 20, 0.5));
+        const buttonRow = document.createElement('div');
+        buttonRow.className = 'options-button-row';
+        const splitScreenButton = document.createElement('button');
+        splitScreenButton.id = 'toggle-split-screen-button';
+        splitScreenButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleSplitScreen(); });
+        buttonRow.appendChild(splitScreenButton);
+        updateSplitScreenButton(splitScreenButton, config.isSplitScreen);
+        
+        const scalingButton = document.createElement('button');
+        scalingButton.id = 'toggle-scaling-button';
+        scalingButton.addEventListener('click', () => { Sound.playSound('ui_click', 0.2); Game.toggleScalingMode(); });
+        buttonRow.appendChild(scalingButton);
+        updateScalingButton(scalingButton, config.scalingMode);
+        container.appendChild(buttonRow);
+        
+        container.appendChild(createHeading('Physics Parameters'));
+        const physicsConfig = config.physics;
+        container.appendChild(createSettingInput('Gravity:', physicsConfig, 'GRAVITY', 0, 200, 5));
+        container.appendChild(createSettingInput('Thrust Force:', physicsConfig, 'THRUST_FORCE', 100, 1000, 10));
+        container.appendChild(createSettingInput('Rotation Speed:', physicsConfig, 'ROTATION_SPEED', 1, 10, 0.1));
+        container.appendChild(createSettingInput('Fuel Consumption:', physicsConfig, 'FUEL_CONSUMPTION', 0, 50, 1));
+        container.appendChild(createSettingInput('Fuel Regen:', physicsConfig, 'FUEL_REGEN', 0, 50, 1));
+        container.appendChild(createSettingInput('Collision Damage:', physicsConfig, 'DAMAGE_ON_COLLISION', 0, 100, 5));
+        container.appendChild(createSettingInput('Bomb Drain:', physicsConfig, 'BOMB_STABILITY_DRAIN', 0, 20, 0.5));
+        container.appendChild(createSettingInput('Bomb Regen:', physicsConfig, 'BOMB_STABILITY_REGEN', 0, 20, 0.5));
+        container.appendChild(createSettingInput('Harmony Angle:', physicsConfig, 'HARMONY_ANGLE_THRESHOLD', 0.1, 1.5, 0.05));
+        container.appendChild(createSettingInput('Rope Length:', physicsConfig, 'ROPE_LENGTH', 50, 200, 5));
+        container.appendChild(createSettingInput('Rope Stiffness:', physicsConfig, 'ROPE_STIFFNESS', 20, 300, 10));
+        container.appendChild(createSettingInput('Rope Damping:', physicsConfig, 'ROPE_DAMPING', 0, 20, 1));
+        container.appendChild(createSettingInput('Wall Thickness:', physicsConfig, 'WALL_HALF_THICKNESS', 1, 20, 0.5));
 
-            const footer = document.createElement('div');
-            footer.id = 'options-button-footer';
+        const footer = document.createElement('div');
+        footer.id = 'options-button-footer';
 
-            const startButton = document.createElement('button');
-            startButton.textContent = 'Start Custom Game';
-            startButton.addEventListener('click', () => {
-                Sound.playSound('ui_click', 0.4);
-                Game.startGame(-1); 
-            });
-            footer.appendChild(startButton);
+        const startButton = document.createElement('button');
+        startButton.textContent = 'Start Custom Game';
+        startButton.addEventListener('click', () => {
+            Sound.playSound('ui_click', 0.4);
+            Game.startGame(-1); 
+        });
+        footer.appendChild(startButton);
 
-            const closeButton = document.createElement('button');
-            closeButton.textContent = 'Close';
-            closeButton.addEventListener('click', () => {
-                Sound.playSound('ui_click', 0.2);
-                hide('options-screen');
-                elements['screen'].classList.remove('options-menu-active');
-            });
-            footer.appendChild(closeButton);
-            
-            optionsScreen.appendChild(footer);
+        const closeButton = document.createElement('button');
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', () => {
+            Sound.playSound('ui_click', 0.2);
+            hide('options-screen');
+            elements['screen'].classList.remove('options-menu-active');
+        });
+        footer.appendChild(closeButton);
+        
+        optionsScreen.appendChild(footer);
+    }
+
+    function updatePlayerName(playerIndex, gamepadIndex) {
+        const id = `p${playerIndex + 1}-name`;
+        const element = elements[id];
+        if (!element) return;
+        let nameText = `P${playerIndex + 1}`;
+        if (gamepadIndex !== -1) { nameText += ` (GP${gamepadIndex})`; }
+        nameText += ' 🚀';
+        element.textContent = nameText;
+    }
+    function populateRebindingUI() { const controls = Game.getGameState().playerControls; if (!controls) return; const buttons = elements['rebinding-ui'].querySelectorAll('.rebind-button'); buttons.forEach(button => { const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; if (controls[player] && controls[player][action]) { button.textContent = controls[player][action]; } }); }
+    function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; Sound.playSound('ui_click', 0.2); const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
+    return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton, updatePlayerName, updateSwitchButton };
+})();
+
+// --- LEVEL DATA ---
+const Levels = [
+    { name: "Test Level", playerStart: { x: 500, y: 1900 }, bombStart: { x: 500, y: 1500 }, objects: [ { type: 'cave_wall', points: [ {x: 0, y: 2000}, {x: 0, y: 0}, {x: 1000, y: 0}, {x: 1000, y: 2000}, {x: 800, y: 2000}, {x: 800, y: 200}, {x: 200, y: 200}, {x: 200, y: 2000}, {x: 0, y: 2000} ]}, { type: 'cave_wall', points: [ {x: 350, y: 1200}, {x: 650, y: 1200} ]}, { type: 'landing_pad', x: 450, y: 1950, width: 100, height: 10 }, { type: 'landing_pad', x: 450, y: 1150, width: 100, height: 10 }, { type: 'extraction_zone', x: 400, y: 50, width: 200, height: 100 } ] },
+    { name: "The Descent", playerStart: { x: 250, y: 300 }, bombStart: { x: 1250, y: 2400 }, objects: [ { type: 'cave_wall', points: [ {x: 0, y: 2500}, {x: 0, y: 250}, {x: 500, y: 250}, {x: 600, y: 350}, {x: 1500, y: 350}, {x: 1600, y: 250}, {x: 2000, y: 250}, {x: 2000, y: 2500}, {x: 0, y: 2500} ]}, { type: 'cave_wall', points: [ {x: 200, y: 500}, {x: 400, y: 650}, {x: 600, y: 600}, {x: 800, y: 900}, {x: 700, y: 1200}, {x: 900, y: 1500}, {x: 1300, y: 1600}, {x: 1600, y: 1400}, {x: 1800, y: 1700}, {x: 1700, y: 2000}, {x: 1400, y: 2200}, {x: 1100, y: 2100}, {x: 800, y: 2300}, {x: 1000, y: 2500}, {x: 1500, y: 2500}, {x: 1700, y: 2300} ]}, { type: 'landing_pad', x: 200, y: 450, width: 100, height: 10 }, { type: 'landing_pad', x: 850, y: 1490, width: 100, height: 10 }, { type: 'landing_pad', x: 1200, y: 2450, width: 100, height: 10 }, { type: 'extraction_zone', x: 1700, y: 300, width: 200, height: 50 } ] },
+    { name: "Random Cavern (S)", procedural: true, config: { generatorType: 'cavern', width: 80, height: 80, maxRooms: 40, roomMinSize: 8, roomMaxSize: 16, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 3 } },
+    { name: "Random Cavern (M)", procedural: true, config: { generatorType: 'cavern', width: 120, height: 120, maxRooms: 50, roomMinSize: 9, roomMaxSize: 18, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 8 } },
+    { name: "Random Cavern (L)", procedural: true, config: { generatorType: 'cavern', width: 180, height: 180, maxRooms: 60, roomMinSize: 10, roomMaxSize: 20, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 12 } },
+    { name: "Random Maze (S)", procedural: true, config: { generatorType: 'maze', width: 60, height: 60, maxRooms: 30, roomMinSize: 7, roomMaxSize: 14, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 3 } },
+    { name: "Random Maze (M)", procedural: true, config: { generatorType: 'maze', width: 90, height: 90, maxRooms: 40, roomMinSize: 8, roomMaxSize: 16, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 8 } },
+];
+
+// --- LEVEL GENERATOR MODULE ---
+const LevelGenerator = (() => {
+    class Rect { constructor(x, y, w, h) { this.x1 = x; this.y1 = y; this.x2 = x + w; this.y2 = y + h; this.center = [Math.floor((this.x1 + this.x2) / 2), Math.floor((this.y1 + this.y2) / 2)]; } intersect(other) { return (this.x1 < other.x2 + 1 && this.x2 > other.x1 - 1 && this.y1 < other.y2 + 1 && this.y2 > other.y1 - 1); } }
+    function createCavernGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(otherRoom => newRoom.intersect(otherRoom))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) mapGrid[i][j] = ' '; } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } return { mapGrid, rooms }; }
+    function createMazeGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(room => newRoom.intersect(room))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) { mapGrid[i][j] = ' '; } } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } return { mapGrid, rooms }; }
+    function convertGridToLevelObjects(mapGrid, scale) { const objects = []; const height = mapGrid.length; const width = mapGrid[0].length; const isFloor = (x, y) => (x < 0 || y < 0 || x >= width || y >= height) || mapGrid[y][x] !== '#'; for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) { if (!isFloor(x, y)) { if (isFloor(x, y - 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: (x + 1) * scale, y: y * scale }] }); if (isFloor(x, y + 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: (y + 1) * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); if (isFloor(x - 1, y)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: x * scale, y: (y + 1) * scale }] }); if (isFloor(x + 1, y)) objects.push({ type: 'cave_wall', points: [{ x: (x + 1) * scale, y: y * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); } } } return objects; }
+    function generate(name, config) {
+        let gridData;
+        if (config.generatorType === 'maze') {
+            gridData = createMazeGrid(config);
+        } else {
+            gridData = createCavernGrid(config);
         }
-
-        function updatePlayerName(playerIndex, gamepadIndex) {
-            const id = `p${playerIndex + 1}-name`;
-            const element = elements[id];
-            if (!element) return;
-            let nameText = `P${playerIndex + 1}`;
-            if (gamepadIndex !== -1) { nameText += ` (GP${gamepadIndex})`; }
-            nameText += ' 🚀';
-            element.textContent = nameText;
+        const { mapGrid, rooms } = gridData;
+        if (rooms.length < 10) {
+            console.log("Regenerating level, not enough rooms for strategic placement.");
+            return generate(name, config);
         }
-        function populateRebindingUI() { const controls = Game.getGameState().playerControls; if (!controls) return; const buttons = elements['rebinding-ui'].querySelectorAll('.rebind-button'); buttons.forEach(button => { const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; if (controls[player] && controls[player][action]) { button.textContent = controls[player][action]; } }); }
-        function handleRebindClick(e) { if (!e.target.classList.contains('rebind-button')) return; const button = e.target; Sound.playSound('ui_click', 0.2); const player = parseInt(button.dataset.player, 10); const action = button.dataset.action; document.querySelectorAll('.rebind-button.is-listening').forEach(b => { b.classList.remove('is-listening'); populateRebindingUI(); }); button.classList.add('is-listening'); button.textContent = 'Press key...'; Input.listenForNextKey((newKeyCode) => { if (newKeyCode) { Game.rebindKey(player, action, newKeyCode); } button.classList.remove('is-listening'); populateRebindingUI(); }); }
-        return { init, get, update, show, hide, showLevelMessage, populateLevelSelect, toggleHelp, updateSplitScreenButton, updateScalingButton, updatePlayerName, updateSwitchButton };
-    })();
-
-    // --- LEVEL DATA ---
-    const Levels = [
-        { name: "Test Level", playerStart: { x: 500, y: 1900 }, bombStart: { x: 500, y: 1500 }, objects: [ { type: 'cave_wall', points: [ {x: 0, y: 2000}, {x: 0, y: 0}, {x: 1000, y: 0}, {x: 1000, y: 2000}, {x: 800, y: 2000}, {x: 800, y: 200}, {x: 200, y: 200}, {x: 200, y: 2000}, {x: 0, y: 2000} ]}, { type: 'cave_wall', points: [ {x: 350, y: 1200}, {x: 650, y: 1200} ]}, { type: 'landing_pad', x: 450, y: 1950, width: 100, height: 10 }, { type: 'landing_pad', x: 450, y: 1150, width: 100, height: 10 }, { type: 'extraction_zone', x: 400, y: 50, width: 200, height: 100 } ] },
-        { name: "The Descent", playerStart: { x: 250, y: 300 }, bombStart: { x: 1250, y: 2400 }, objects: [ { type: 'cave_wall', points: [ {x: 0, y: 2500}, {x: 0, y: 250}, {x: 500, y: 250}, {x: 600, y: 350}, {x: 1500, y: 350}, {x: 1600, y: 250}, {x: 2000, y: 250}, {x: 2000, y: 2500}, {x: 0, y: 2500} ]}, { type: 'cave_wall', points: [ {x: 200, y: 500}, {x: 400, y: 650}, {x: 600, y: 600}, {x: 800, y: 900}, {x: 700, y: 1200}, {x: 900, y: 1500}, {x: 1300, y: 1600}, {x: 1600, y: 1400}, {x: 1800, y: 1700}, {x: 1700, y: 2000}, {x: 1400, y: 2200}, {x: 1100, y: 2100}, {x: 800, y: 2300}, {x: 1000, y: 2500}, {x: 1500, y: 2500}, {x: 1700, y: 2300} ]}, { type: 'landing_pad', x: 200, y: 450, width: 100, height: 10 }, { type: 'landing_pad', x: 850, y: 1490, width: 100, height: 10 }, { type: 'landing_pad', x: 1200, y: 2450, width: 100, height: 10 }, { type: 'extraction_zone', x: 1700, y: 300, width: 200, height: 50 } ] },
-        { name: "Random Cavern (S)", procedural: true, config: { generatorType: 'cavern', width: 80, height: 80, maxRooms: 40, roomMinSize: 8, roomMaxSize: 16, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 3 } },
-        { name: "Random Cavern (M)", procedural: true, config: { generatorType: 'cavern', width: 120, height: 120, maxRooms: 50, roomMinSize: 9, roomMaxSize: 18, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 8 } },
-        { name: "Random Cavern (L)", procedural: true, config: { generatorType: 'cavern', width: 180, height: 180, maxRooms: 60, roomMinSize: 10, roomMaxSize: 20, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 12 } },
-        { name: "Random Maze (S)", procedural: true, config: { generatorType: 'maze', width: 60, height: 60, maxRooms: 30, roomMinSize: 7, roomMaxSize: 14, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 3 } },
-        { name: "Random Maze (M)", procedural: true, config: { generatorType: 'maze', width: 90, height: 90, maxRooms: 40, roomMinSize: 8, roomMaxSize: 16, scale: 150, zoom: 0.25, newScale: 60, newZoom: 0.4, numLandingPads: 8 } },
-    ];
-
-    // --- LEVEL GENERATOR MODULE ---
-    const LevelGenerator = (() => {
-        class Rect { constructor(x, y, w, h) { this.x1 = x; this.y1 = y; this.x2 = x + w; this.y2 = y + h; this.center = [Math.floor((this.x1 + this.x2) / 2), Math.floor((this.y1 + this.y2) / 2)]; } intersect(other) { return (this.x1 < other.x2 + 1 && this.x2 > other.x1 - 1 && this.y1 < other.y2 + 1 && this.y2 > other.y1 - 1); } }
-        function createCavernGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(otherRoom => newRoom.intersect(otherRoom))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) mapGrid[i][j] = ' '; } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } return { mapGrid, rooms }; }
-        function createMazeGrid({width, height, maxRooms, roomMinSize, roomMaxSize}) { let mapGrid = Array.from({ length: height }, () => Array(width).fill('#')); let rooms = []; for (let r = 0; r < maxRooms; r++) { let w = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let h = Math.floor(Math.random() * (roomMaxSize - roomMinSize + 1)) + roomMinSize; let x = Math.floor(Math.random() * (width - w - 2)) + 1; let y = Math.floor(Math.random() * (height - h - 2)) + 1; let newRoom = new Rect(x, y, w, h); if (rooms.some(room => newRoom.intersect(room))) continue; for (let i = newRoom.y1; i < newRoom.y2; i++) { for (let j = newRoom.x1; j < newRoom.x2; j++) { mapGrid[i][j] = ' '; } } if (rooms.length > 0) { let [prevX, prevY] = rooms[rooms.length - 1].center; let [newX, newY] = newRoom.center; const carve = (x, y) => { if (x > 0 && x < width - 1 && y > 0 && y < height - 1) mapGrid[y][x] = ' '; }; if (Math.random() < 0.5) { for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, prevY - 2); carve(i, prevY - 1); carve(i, prevY); carve(i, prevY + 1); carve(i, prevY + 2); } for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(newX - 1, i); carve(newX, i); carve(newX + 1, i); } } else { for (let i = Math.min(prevY, newY); i <= Math.max(prevY, newY); i++) { carve(prevX - 1, i); carve(prevX, i); carve(prevX + 1, i); } for (let i = Math.min(prevX, newX); i <= Math.max(prevX, newX); i++) { carve(i, newY - 2); carve(i, newY - 1); carve(i, newY); carve(i, newY + 1); carve(i, newY + 2); } } } rooms.push(newRoom); } return { mapGrid, rooms }; }
-        function convertGridToLevelObjects(mapGrid, scale) { const objects = []; const height = mapGrid.length; const width = mapGrid[0].length; const isFloor = (x, y) => (x < 0 || y < 0 || x >= width || y >= height) || mapGrid[y][x] !== '#'; for (let y = 0; y < height; y++) { for (let x = 0; x < width; x++) { if (!isFloor(x, y)) { if (isFloor(x, y - 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: (x + 1) * scale, y: y * scale }] }); if (isFloor(x, y + 1)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: (y + 1) * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); if (isFloor(x - 1, y)) objects.push({ type: 'cave_wall', points: [{ x: x * scale, y: y * scale }, { x: x * scale, y: (y + 1) * scale }] }); if (isFloor(x + 1, y)) objects.push({ type: 'cave_wall', points: [{ x: (x + 1) * scale, y: y * scale }, { x: (x + 1) * scale, y: (y + 1) * scale }] }); } } } return objects; }
-        function generate(name, config) {
-            let gridData;
-            if (config.generatorType === 'maze') {
-                gridData = createMazeGrid(config);
-            } else {
-                gridData = createCavernGrid(config);
-            }
-            const { mapGrid, rooms } = gridData;
-            if (rooms.length < 10) {
-                console.log("Regenerating level, not enough rooms for strategic placement.");
-                return generate(name, config);
-            }
-            const scale = config.scale;
-            let objects = convertGridToLevelObjects(mapGrid, scale);
-            const usedPadRooms = new Set();
-            const WALL_HALF_THICKNESS = Game.getConfig().physics.WALL_HALF_THICKNESS; 
-            const findLandingPadSpot = (room) => {
-                const candidates = [];
-                const floorY = room.y2;
-                const spaceY = room.y2 - 1;
-                if (floorY >= config.height || spaceY < 0) return null;
-                for (let x = room.x1; x <= room.x2 - 2; x++) {
-                    if (mapGrid[floorY][x] === '#' && mapGrid[floorY][x + 1] === '#' &&
-                        mapGrid[spaceY][x] === ' ' && mapGrid[spaceY][x + 1] === ' ') {
-                        candidates.push(x);
-                    }
+        const scale = config.scale;
+        let objects = convertGridToLevelObjects(mapGrid, scale);
+        const usedPadRooms = new Set();
+        const WALL_HALF_THICKNESS = Game.getConfig().physics.WALL_HALF_THICKNESS; 
+        const findLandingPadSpot = (room) => {
+            const candidates = [];
+            const floorY = room.y2;
+            const spaceY = room.y2 - 1;
+            if (floorY >= config.height || spaceY < 0) return null;
+            for (let x = room.x1; x <= room.x2 - 2; x++) {
+                if (mapGrid[floorY][x] === '#' && mapGrid[floorY][x + 1] === '#' &&
+                    mapGrid[spaceY][x] === ' ' && mapGrid[spaceY][x + 1] === ' ') {
+                    candidates.push(x);
                 }
-                if (candidates.length > 0) {
-                    const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
-                    const padHeight = 10;
-                    const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - (padHeight * 2) - 5; 
-                    return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
-                }
-                return null;
-            };
-            const gridCenterX = config.width / 2;
-            const gridCenterY = config.height / 2;
-            const startRoom = rooms.reduce((closest, room) => {
-                const distA = Math.hypot(closest.center[0] - gridCenterX, closest.center[1] - gridCenterY);
-                const distB = Math.hypot(room.center[0] - gridCenterX, room.center[1] - gridCenterY);
+            }
+            if (candidates.length > 0) {
+                const chosenX = candidates[Math.floor(Math.random() * candidates.length)];
+                const padHeight = 10;
+                const calculatedY = (floorY * scale) - (WALL_HALF_THICKNESS * 2) - (padHeight * 2) - 5; 
+                return { type: 'landing_pad', x: chosenX * scale, y: calculatedY, width: 2 * scale, height: padHeight };
+            }
+            return null;
+        };
+        const gridCenterX = config.width / 2;
+        const gridCenterY = config.height / 2;
+        const startRoom = rooms.reduce((closest, room) => {
+            const distA = Math.hypot(closest.center[0] - gridCenterX, closest.center[1] - gridCenterY);
+            const distB = Math.hypot(room.center[0] - gridCenterX, room.center[1] - gridCenterY);
+            return distB < distA ? room : closest;
+        });
+        let availableRooms = rooms.filter(r => r !== startRoom);
+        if (availableRooms.length < 2) { return generate(name, config); }
+        const findClosestTo = (point, roomList) => {
+            return roomList.reduce((closest, room) => {
+                const distA = Math.hypot(closest.center[0] - point.x, closest.center[1] - point.y);
+                const distB = Math.hypot(room.center[0] - point.x, room.center[1] - point.y);
                 return distB < distA ? room : closest;
             });
-            let availableRooms = rooms.filter(r => r !== startRoom);
-            if (availableRooms.length < 2) { return generate(name, config); }
-            const findClosestTo = (point, roomList) => {
-                return roomList.reduce((closest, room) => {
-                    const distA = Math.hypot(closest.center[0] - point.x, closest.center[1] - point.y);
-                    const distB = Math.hypot(room.center[0] - point.x, room.center[1] - point.y);
-                    return distB < distA ? room : closest;
-                });
-            };
-            const placementStrategies = [ { roomA: availableRooms.reduce((p, c) => p.y1 < c.y1 ? p : c), roomB: availableRooms.reduce((p, c) => p.y2 > c.y2 ? p : c) }, { roomA: availableRooms.reduce((p, c) => p.x1 < c.x1 ? p : c), roomB: availableRooms.reduce((p, c) => p.x2 > c.x2 ? p : c) }, { roomA: findClosestTo({x: 0, y: 0}, availableRooms), roomB: findClosestTo({x: config.width, y: config.height}, availableRooms) }, { roomA: findClosestTo({x: config.width, y: 0}, availableRooms), roomB: findClosestTo({x: 0, y: config.height}, availableRooms) } ];
-            const chosenStrategy = placementStrategies[Math.floor(Math.random() * placementStrategies.length)];
-            let bombRoom, exitRoom;
-            if (Math.random() < 0.5) { [bombRoom, exitRoom] = [chosenStrategy.roomA, chosenStrategy.roomB]; } 
-            else { [bombRoom, exitRoom] = [chosenStrategy.roomB, chosenStrategy.roomA]; }
-            if (bombRoom === exitRoom || !bombRoom || !exitRoom) { return generate(name, config); }
-            let playerStart;
-            let playerPad = findLandingPadSpot(startRoom);
-            if (!playerPad) {
-                const fallbackPadX = (startRoom.center[0] - 1) * scale;
-                const padHeight = 10;
-                const fallbackPadY = (startRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
-                playerPad = { type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight };
-            }
-            const spawnCenterX = playerPad.x + playerPad.width / 2;
-            const spawnY = playerPad.y - 40;
-            const shipRadius = 20;
-            playerStart = { x: spawnCenterX - shipRadius, y: spawnY };
-            objects.push(playerPad);
-            usedPadRooms.add(startRoom);
-            let bombStart;
-            let bombPad = findLandingPadSpot(bombRoom);
-            if (bombPad) {
-                objects.push(bombPad);
-                bombStart = { x: bombPad.x + (bombPad.width / 2), y: (bombRoom.y1 + 2) * scale };
-            } else {
-                const fallbackPadX = (bombRoom.center[0] - 1) * scale;
-                const padHeight = 10;
-                const fallbackPadY = (bombRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
-                objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight });
-                bombStart = { x: fallbackPadX + scale, y: (bombRoom.y1 + 2) * scale };
-            }
-            usedPadRooms.add(bombRoom);
-            const exitPos = { x: exitRoom.center[0], y: exitRoom.center[1] };
-            objects.push({ type: 'extraction_zone', x: (exitPos.x - 1) * scale, y: (exitPos.y - 1) * scale, width: 2 * scale, height: 2 * scale });
-            usedPadRooms.add(exitRoom);
-            const tl = findClosestTo({x:0, y:0}, rooms);
-            const tr = findClosestTo({x:config.width, y:0}, rooms);
-            const bl = findClosestTo({x:0, y:config.height}, rooms);
-            const br = findClosestTo({x:config.width, y:config.height}, rooms);
-            const cornerRooms = new Set([tl, tr, bl, br]);
-            for (const corner of cornerRooms) {
-                if (!usedPadRooms.has(corner)) {
-                    let cornerPad = findLandingPadSpot(corner);
-                    if (cornerPad) { objects.push(cornerPad); usedPadRooms.add(corner); }
-                }
-            }
-            const numPads = config.numLandingPads || 0;
-            const potentialPadRooms = rooms.filter(room => !usedPadRooms.has(room));
-            for (let i = potentialPadRooms.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [potentialPadRooms[i], potentialPadRooms[j]] = [potentialPadRooms[j], potentialPadRooms[i]]; }
-            let placedRandomPads = 0;
-            for (const padRoom of potentialPadRooms) {
-                if (placedRandomPads >= numPads) break;
-                let randomPad = findLandingPadSpot(padRoom);
-                if (randomPad) { objects.push(randomPad); placedRandomPads++; }
-            }
-            return { name, playerStart, bombStart, objects, mapGrid, scale, gridWidth: config.width, gridHeight: config.height };
+        };
+        const placementStrategies = [ { roomA: availableRooms.reduce((p, c) => p.y1 < c.y1 ? p : c), roomB: availableRooms.reduce((p, c) => p.y2 > c.y2 ? p : c) }, { roomA: availableRooms.reduce((p, c) => p.x1 < c.x1 ? p : c), roomB: availableRooms.reduce((p, c) => p.x2 > c.x2 ? p : c) }, { roomA: findClosestTo({x: 0, y: 0}, availableRooms), roomB: findClosestTo({x: config.width, y: config.height}, availableRooms) }, { roomA: findClosestTo({x: config.width, y: 0}, availableRooms), roomB: findClosestTo({x: 0, y: config.height}, availableRooms) } ];
+        const chosenStrategy = placementStrategies[Math.floor(Math.random() * placementStrategies.length)];
+        let bombRoom, exitRoom;
+        if (Math.random() < 0.5) { [bombRoom, exitRoom] = [chosenStrategy.roomA, chosenStrategy.roomB]; } 
+        else { [bombRoom, exitRoom] = [chosenStrategy.roomB, chosenStrategy.roomA]; }
+        if (bombRoom === exitRoom || !bombRoom || !exitRoom) { return generate(name, config); }
+        let playerStart;
+        let playerPad = findLandingPadSpot(startRoom);
+        if (!playerPad) {
+            const fallbackPadX = (startRoom.center[0] - 1) * scale;
+            const padHeight = 10;
+            const fallbackPadY = (startRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
+            playerPad = { type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight };
         }
-
-        function gridifyStaticLevel(levelData, gridSize) { let maxX = 0, maxY = 0; levelData.objects.forEach(o => { if (o.points) o.points.forEach(p => { maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });}); const scale = Math.max(maxX, maxY) / (gridSize - 1); const mapGrid = Array.from({ length: gridSize }, () => Array(gridSize).fill(' ')); levelData.objects.forEach(obj => { if (obj.type === 'cave_wall') { for (let i = 0; i < obj.points.length - 1; i++) { const p1 = obj.points[i]; const p2 = obj.points[i+1]; const gx1 = Math.round(p1.x / scale); const gy1 = Math.round(p1.y / scale); const gx2 = Math.round(p2.x / scale); const gy2 = Math.round(p2.y / scale); let x0=gx1,y0=gy1,x1=gx2,y1=gy2; const dx=Math.abs(x1-x0),sx=x0<x1?1:-1; const dy=-Math.abs(y1-y0),sy=y0<y1?1:-1; let err=dx+dy,e2; while(true){ if(x0>=0&&x0<gridSize&&y0>=0&&y0<gridSize) mapGrid[y0][x0]='#'; if(x0===x1&&y0===y1)break; e2=2*err; if(e2>=dy){err+=dy;x0+=sx;} if(e2<=dx){err+=dx;y0+=sy;}}}}}); for(let y=1; y<gridSize-1; y++){for(let x=1; x<gridSize-1; x++){if(mapGrid[y][x]===' '&&(mapGrid[y-1][x]==='#'||mapGrid[y+1][x]==='#'||mapGrid[y][x-1]==='#'||mapGrid[y][x+1]==='#')){}else{ if(mapGrid[y-1]&&mapGrid[y-1][x-1]===' '&&mapGrid[y-1][x]===' '&&mapGrid[y-1][x+1]===' '&&mapGrid[y][x-1]===' '&&mapGrid[y][x+1]===' '&&mapGrid[y+1]&&mapGrid[y+1][x-1]===' '&&mapGrid[y+1][x]===' '&&mapGrid[y+1][x+1]===' '){}else{mapGrid[y][x]='#';}}}} return { ...levelData, mapGrid, scale, gridWidth: gridSize, gridHeight: gridSize };}
-        return { generate, gridifyStaticLevel };
-    })();
-
-    // --- PATHFINDER MODULE ---
-    const Pathfinder = (() => {
-        function heuristic(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
-        function findPath(grid, start, goal) {
-            if (!grid || grid.length === 0 || start.gy < 0 || start.gy >= grid.length || start.gx < 0 || start.gx >= grid[0].length || goal.gy < 0 || goal.gy >= grid.length || goal.gx < 0 || goal.gx >= grid[0].length || grid[start.gy][start.gx] === '#' || grid[goal.gy][goal.gx] === '#') { return []; }
-            let frontier = [{ cell: { x: start.gx, y: start.gy }, priority: 0 }]; let cameFrom = {}; let costSoFar = {}; const startKey = `${start.gx},${start.gy}`; cameFrom[startKey] = null; costSoFar[startKey] = 0;
-            while (frontier.length > 0) {
-                frontier.sort((a, b) => a.priority - b.priority);
-                let currentItem = frontier.shift(); let current = currentItem.cell; const currentKey = `${current.x},${current.y}`;
-                if (current.x === goal.gx && current.y === goal.gy) { let path = []; let temp = current; while (temp !== null) { path.push(temp); const key = `${temp.x},${temp.y}`; temp = cameFrom[key]; } return path.reverse(); }
-                const neighbors = [{x:0,y:-1}, {x:0,y:1}, {x:-1,y:0}, {x:1,y:0}];
-                for (let nDir of neighbors) {
-                    const next = { x: current.x + nDir.x, y: current.y + nDir.y };
-                    if (next.y < 0 || next.y >= grid.length || next.x < 0 || next.x >= grid[0].length || grid[next.y][next.x] === '#') { continue; }
-                    const newCost = costSoFar[currentKey] + 1; const nextKey = `${next.x},${next.y}`;
-                    if (!(nextKey in costSoFar) || newCost < costSoFar[nextKey]) { costSoFar[nextKey] = newCost; let priority = newCost + heuristic(next, {x: goal.gx, y: goal.gy}); frontier.push({ cell: next, priority: priority }); cameFrom[nextKey] = current; }
-                }
-            }
-            return [];
-        }
-        return { findPath };
-    })();
-
-    Sound.init();
-    Game.init();
-
-    // --- FULLSCREEN SCALING LOGIC (EXTERNAL UTILITY) ---
-    const mobileToggleBtn = document.getElementById('mobile-btn');
-    const screenElement = document.getElementById("screen");
-
-    function scaleGame() {
-        const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
-
-        if (isFullscreen) {
-            const baseHeight = 720;
-            const screenRatio = window.innerWidth / window.innerHeight;
-            const dynamicWidth = Math.max(960, baseHeight * screenRatio);
-            
-            screenElement.style.width = `${dynamicWidth}px`;
-            screenElement.style.height = `${baseHeight}px`;
-
-            const scale = window.innerHeight / baseHeight;
-            
-            screenElement.style.transform = `scale(${scale})`;
-            document.body.classList.add('mobile-mode'); 
+        const spawnCenterX = playerPad.x + playerPad.width / 2;
+        const spawnY = playerPad.y - 40;
+        const shipRadius = 20;
+        playerStart = { x: spawnCenterX - shipRadius, y: spawnY };
+        objects.push(playerPad);
+        usedPadRooms.add(startRoom);
+        let bombStart;
+        let bombPad = findLandingPadSpot(bombRoom);
+        if (bombPad) {
+            objects.push(bombPad);
+            bombStart = { x: bombPad.x + (bombPad.width / 2), y: (bombRoom.y1 + 2) * scale };
         } else {
-            screenElement.style.width = '960px';
-            screenElement.style.height = '720px';
-            screenElement.style.transform = 'none'; 
-            document.body.classList.remove('mobile-mode');
+            const fallbackPadX = (bombRoom.center[0] - 1) * scale;
+            const padHeight = 10;
+            const fallbackPadY = (bombRoom.y2 * scale) - (padHeight * 2) - (WALL_HALF_THICKNESS * 2) - 5;
+            objects.push({ type: 'landing_pad', x: fallbackPadX, y: fallbackPadY, width: 2 * scale, height: padHeight });
+            bombStart = { x: fallbackPadX + scale, y: (bombRoom.y1 + 2) * scale };
         }
-
-        if (typeof Renderer !== 'undefined' && Renderer.resize) {
-            Renderer.resize();
+        usedPadRooms.add(bombRoom);
+        const exitPos = { x: exitRoom.center[0], y: exitRoom.center[1] };
+        objects.push({ type: 'extraction_zone', x: (exitPos.x - 1) * scale, y: (exitPos.y - 1) * scale, width: 2 * scale, height: 2 * scale });
+        usedPadRooms.add(exitRoom);
+        const tl = findClosestTo({x:0, y:0}, rooms);
+        const tr = findClosestTo({x:config.width, y:0}, rooms);
+        const bl = findClosestTo({x:0, y:config.height}, rooms);
+        const br = findClosestTo({x:config.width, y:config.height}, rooms);
+        const cornerRooms = new Set([tl, tr, bl, br]);
+        for (const corner of cornerRooms) {
+            if (!usedPadRooms.has(corner)) {
+                let cornerPad = findLandingPadSpot(corner);
+                if (cornerPad) { objects.push(cornerPad); usedPadRooms.add(corner); }
+            }
         }
+        const numPads = config.numLandingPads || 0;
+        const potentialPadRooms = rooms.filter(room => !usedPadRooms.has(room));
+        for (let i = potentialPadRooms.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [potentialPadRooms[i], potentialPadRooms[j]] = [potentialPadRooms[j], potentialPadRooms[i]]; }
+        let placedRandomPads = 0;
+        for (const padRoom of potentialPadRooms) {
+            if (placedRandomPads >= numPads) break;
+            let randomPad = findLandingPadSpot(padRoom);
+            if (randomPad) { objects.push(randomPad); placedRandomPads++; }
+        }
+        return { name, playerStart, bombStart, objects, mapGrid, scale, gridWidth: config.width, gridHeight: config.height };
     }
 
-    function goFull() {
-        const el = document.documentElement;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    function gridifyStaticLevel(levelData, gridSize) { let maxX = 0, maxY = 0; levelData.objects.forEach(o => { if (o.points) o.points.forEach(p => { maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });}); const scale = Math.max(maxX, maxY) / (gridSize - 1); const mapGrid = Array.from({ length: gridSize }, () => Array(gridSize).fill(' ')); levelData.objects.forEach(obj => { if (obj.type === 'cave_wall') { for (let i = 0; i < obj.points.length - 1; i++) { const p1 = obj.points[i]; const p2 = obj.points[i+1]; const gx1 = Math.round(p1.x / scale); const gy1 = Math.round(p1.y / scale); const gx2 = Math.round(p2.x / scale); const gy2 = Math.round(p2.y / scale); let x0=gx1,y0=gy1,x1=gx2,y1=gy2; const dx=Math.abs(x1-x0),sx=x0<x1?1:-1; const dy=-Math.abs(y1-y0),sy=y0<y1?1:-1; let err=dx+dy,e2; while(true){ if(x0>=0&&x0<gridSize&&y0>=0&&y0<gridSize) mapGrid[y0][x0]='#'; if(x0===x1&&y0===y1)break; e2=2*err; if(e2>=dy){err+=dy;x0+=sx;} if(e2<=dx){err+=dx;y0+=sy;}}}}}); for(let y=1; y<gridSize-1; y++){for(let x=1; x<gridSize-1; x++){if(mapGrid[y][x]===' '&&(mapGrid[y-1][x]==='#'||mapGrid[y+1][x]==='#'||mapGrid[y][x-1]==='#'||mapGrid[y][x+1]==='#')){}else{ if(mapGrid[y-1]&&mapGrid[y-1][x-1]===' '&&mapGrid[y-1][x]===' '&&mapGrid[y-1][x+1]===' '&&mapGrid[y][x-1]===' '&&mapGrid[y][x+1]===' '&&mapGrid[y+1]&&mapGrid[y+1][x-1]===' '&&mapGrid[y+1][x]===' '&&mapGrid[y+1][x+1]===' '){}else{mapGrid[y][x]='#';}}}} return { ...levelData, mapGrid, scale, gridWidth: gridSize, gridHeight: gridSize };}
+    return { generate, gridifyStaticLevel };
+})();
+
+// --- PATHFINDER MODULE ---
+const Pathfinder = (() => {
+    function heuristic(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+    function findPath(grid, start, goal) {
+        if (!grid || grid.length === 0 || start.gy < 0 || start.gy >= grid.length || start.gx < 0 || start.gx >= grid[0].length || goal.gy < 0 || goal.gy >= grid.length || goal.gx < 0 || goal.gx >= grid[0].length || grid[start.gy][start.gx] === '#' || grid[goal.gy][goal.gx] === '#') { return []; }
+        let frontier = [{ cell: { x: start.gx, y: start.gy }, priority: 0 }]; let cameFrom = {}; let costSoFar = {}; const startKey = `${start.gx},${start.gy}`; cameFrom[startKey] = null; costSoFar[startKey] = 0;
+        while (frontier.length > 0) {
+            frontier.sort((a, b) => a.priority - b.priority);
+            let currentItem = frontier.shift(); let current = currentItem.cell; const currentKey = `${current.x},${current.y}`;
+            if (current.x === goal.gx && current.y === goal.gy) { let path = []; let temp = current; while (temp !== null) { path.push(temp); const key = `${temp.x},${temp.y}`; temp = cameFrom[key]; } return path.reverse(); }
+            const neighbors = [{x:0,y:-1}, {x:0,y:1}, {x:-1,y:0}, {x:1,y:0}];
+            for (let nDir of neighbors) {
+                const next = { x: current.x + nDir.x, y: current.y + nDir.y };
+                if (next.y < 0 || next.y >= grid.length || next.x < 0 || next.x >= grid[0].length || grid[next.y][next.x] === '#') { continue; }
+                const newCost = costSoFar[currentKey] + 1; const nextKey = `${next.x},${next.y}`;
+                if (!(nextKey in costSoFar) || newCost < costSoFar[nextKey]) { costSoFar[nextKey] = newCost; let priority = newCost + heuristic(next, {x: goal.gx, y: goal.gy}); frontier.push({ cell: next, priority: priority }); cameFrom[nextKey] = current; }
+            }
+        }
+        return [];
+    }
+    return { findPath };
+})();
+
+Sound.init();
+Game.init();
+
+// --- FULLSCREEN SCALING LOGIC (EXTERNAL UTILITY) ---
+const mobileToggleBtn = document.getElementById('mobile-btn');
+const screenElement = document.getElementById("screen");
+
+function scaleGame() {
+    const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+
+    if (isFullscreen) {
+        const baseHeight = 720;
+        const screenRatio = window.innerWidth / window.innerHeight;
+        const dynamicWidth = Math.max(960, baseHeight * screenRatio);
+        
+        screenElement.style.width = `${dynamicWidth}px`;
+        screenElement.style.height = `${baseHeight}px`;
+
+        const scale = window.innerHeight / baseHeight;
+        
+        screenElement.style.transform = `scale(${scale})`;
+        document.body.classList.add('mobile-mode'); 
+    } else {
+        screenElement.style.width = '960px';
+        screenElement.style.height = '720px';
+        screenElement.style.transform = 'none'; 
+        document.body.classList.remove('mobile-mode');
     }
 
-    window.addEventListener("resize", scaleGame);
-    window.addEventListener("fullscreenchange", scaleGame);
-    window.addEventListener("webkitfullscreenchange", scaleGame);
-    mobileToggleBtn.addEventListener('click', goFull);
-    
-    scaleGame();
+    if (typeof Renderer !== 'undefined' && Renderer.resize) {
+        Renderer.resize();
+    }
+}
+
+function goFull() {
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+
+window.addEventListener("resize", scaleGame);
+window.addEventListener("fullscreenchange", scaleGame);
+window.addEventListener("webkitfullscreenchange", scaleGame);
+mobileToggleBtn.addEventListener('click', goFull);
+
+scaleGame();
 });
