@@ -18,7 +18,7 @@ body {
     background-color: #000;
     font-family: var(--retro-font);
     color: #fff;
-    overflow: auto; /* Default scroll behavior */
+    overflow: hidden; /* Prevents scrollbars in normal mode scaling */
 }
 
 /* --- MOBILE MODE LOCK --- */
@@ -85,6 +85,44 @@ body.mobile-mode {
 }
 /* Hide the button when in mobile mode */
 body.mobile-mode #mobile-btn { display: none; }
+
+/* --- CREATOR LINK (ALWAYS VISIBLE IN BOTTOM-LEFT CORNER) --- */
+#creator-link {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    z-index: 5000;
+    font-family: var(--retro-font);
+    font-size: 8px;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.65);
+    text-decoration: none;
+    background: rgba(13, 13, 26, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 6px 8px;
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+    user-select: none;
+}
+
+#creator-link:hover {
+    color: #fff;
+    background: rgba(13, 13, 26, 0.95);
+    border-color: var(--safe-color);
+    box-shadow: 0 0 8px rgba(124, 252, 0, 0.4);
+    text-shadow: 0 0 5px var(--safe-color);
+}
+
+body.mobile-mode #creator-link {
+    bottom: 6px;
+    left: 8px;
+    font-size: 7px;
+    padding: 4px 6px;
+    background: rgba(0, 0, 0, 0.65);
+}
 
 /* --- SINGLE PLAYER SWITCH BUTTON --- */
 #switch-player-btn {

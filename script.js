@@ -1993,6 +1993,7 @@ Game.init();
 // --- FULLSCREEN SCALING LOGIC (EXTERNAL UTILITY) ---
 const mobileToggleBtn = document.getElementById('mobile-btn');
 const screenElement = document.getElementById("screen");
+const gameContainer = document.getElementById("game-container");
 
 function scaleGame() {
     const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
@@ -2008,11 +2009,23 @@ function scaleGame() {
         const scale = window.innerHeight / baseHeight;
         
         screenElement.style.transform = `scale(${scale})`;
+        gameContainer.style.transform = 'none'; // Reset container scale in fullscreen
         document.body.classList.add('mobile-mode'); 
     } else {
+        // Reset the screen to its default base resolution
         screenElement.style.width = '960px';
         screenElement.style.height = '720px';
         screenElement.style.transform = 'none'; 
+        
+        // Calculate the scale factor required to fit the 4:3 area inside the current viewport
+        const baseWidth = 960;
+        const baseHeight = 720;
+        const scale = Math.min(window.innerWidth / baseWidth, window.innerHeight / baseHeight);
+        
+        // Scale the entire container from the center
+        gameContainer.style.transform = `scale(${scale})`;
+        gameContainer.style.transformOrigin = 'center center';
+        
         document.body.classList.remove('mobile-mode');
     }
 
